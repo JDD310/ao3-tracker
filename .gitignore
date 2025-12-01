@@ -12,3 +12,5 @@ ds.store
 worktrees.json
 ao3downloader
 AO3DOWNLOADER_INTEGRATION_PLAN.md
+logs/
+*.log
