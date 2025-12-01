@@ -7,15 +7,16 @@ This project uses and integrates with several open-source libraries and tools. T
 ### ao3downloader
 - **License**: GNU General Public License v3.0 (GPL-3.0)
 - **Source**: https://github.com/nianeyna/ao3downloader
-- **PyPI**: https://pypi.org/project/ao3downloader/
+- **Installation Method**: This project uses ao3downloader as a local git repository clone (not via PyPI). The application automatically clones the repository from GitHub into the project root directory (`ao3downloader/`) if it's not already present.
 - **Usage**: This project integrates with ao3downloader for downloading and processing AO3 works. The ao3downloader library is used extensively throughout the application:
   - `ao3_downloader_adapter.py`: Core adapter for work metadata extraction
   - `downloader_wrappers.py`: Async wrappers for all ao3downloader actions
   - `downloader_service.py`: Job management service layer
   - `downloader_config.py`: Configuration management
+  - `downloader_setup.py`: Automatic installation and setup utilities
   - `routes_downloader.py` and `routes_downloader_html.py`: API and web interface routes
 - **License Notice**: As this project uses code from ao3downloader which is licensed under GPL-3.0, please refer to the GPL-3.0 license terms. The full GPL-3.0 license text is available at https://www.gnu.org/licenses/gpl-3.0.html
-- **Integration Details**: The application provides a full web-based interface for all ao3downloader functionality, including downloading works, updating incomplete fics, managing series, and generating log visualizations. All ao3downloader actions are executed as background jobs with progress tracking.
+- **Integration Details**: The application provides a full web-based interface for all ao3downloader functionality, including downloading works, updating incomplete fics, managing series, and generating log visualizations. All ao3downloader actions are executed as background jobs with progress tracking. The ao3downloader source code is included in this project as a git repository clone, ensuring full GPL-3.0 compliance.
 
 ### FastAPI
 - **License**: MIT License

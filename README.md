@@ -191,11 +191,13 @@ ao3-tracker/
 │       ├── downloader_service.py      # Downloader job management
 │       ├── downloader_config.py       # Downloader configuration
 │       ├── downloader_wrappers.py     # Async wrappers for ao3downloader
+│       ├── downloader_setup.py        # ao3downloader installation utilities
 │       └── utils.py                   # Utility functions
 ├── templates/                         # Jinja2 HTML templates
 │   ├── downloader.html               # Downloader interface page
 │   └── downloader_job.html           # Job status page
 ├── static/                            # Static files (CSS, JS)
+├── ao3downloader/                     # ao3downloader repository (cloned automatically)
 ├── requirements.txt                   # Python dependencies
 ├── ao3_tracker.db                    # SQLite database (created on first run)
 └── README.md                          # This file
