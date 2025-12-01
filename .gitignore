@@ -1,0 +1,8 @@
+oauth.txt
+venv/
+*.pyc
+__pycache__/
+credentials.json
+token.json
+*.db
+projectoutline.txt
