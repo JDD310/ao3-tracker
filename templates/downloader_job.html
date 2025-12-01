@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}AO3 Tracker – Job {{ job.id }}{% endblock %}
+
+{% block content %}
+<h1>Download Job #{{ job.id }}</h1>
+
+<div style="margin-bottom: 20px;">
+    <a href="/downloader">← Back to Downloader</a>
+</div>
+
+<div style="padding: 20px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 20px;">
+    <h2>Job Details</h2>
+    <table>
+        <tr>
+            <td><strong>Type:</strong></td>
+            <td>{{ job.job_type }}</td>
+        </tr>
+        <tr>
+            <td><strong>Status:</strong></td>
+            <td>
+                <span style="padding: 4px 8px; border-radius: 4px; 
+                    {% if job.status == 'completed' %}background-color: #d4edda; color: #155724;
+                    {% elif job.status == 'failed' %}background-color: #f8d7da; color: #721c24;
+                    {% elif job.status == 'running' %}background-color: #d1ecf1; color: #0c5460;
+                    {% else %}background-color: #fff3cd; color: #856404;{% endif %}">
+                    {{ job.status }}
+                </span>
+            </td>
+        </tr>
+        <tr>
+            <td><strong>Created:</strong></td>
+            <td>{{ job.created_at }}</td>
+        </tr>
+        {% if job.started_at %}
+        <tr>
+            <td><strong>Started:</strong></td>
+            <td>{{ job.started_at }}</td>
+        </tr>
+        {% endif %}
+        {% if job.completed_at %}
+        <tr>
+            <td><strong>Completed:</strong></td>
+            <td>{{ job.completed_at }}</td>
+        </tr>
+        {% endif %}
+    </table>
+</div>
+
+{% if job.progress_message %}
+<div style="padding: 15px; background-color: #f8f9fa; border-radius: 6px; margin-bottom: 20px;">
+    <h3>Progress</h3>
+    <p>{{ job.progress_message }}</p>
+</div>
+{% endif %}
+
+{% if job.parameters %}
+<div style="padding: 15px; background-color: #f8f9fa; border-radius: 6px; margin-bottom: 20px;">
+    <h3>Parameters</h3>
+    <pre style="background-color: white; padding: 10px; border-radius: 4px; overflow-x: auto;">{{ job.parameters | tojson(indent=2) }}</pre>
+</div>
+{% endif %}
+
+{% if job.result %}
+<div style="padding: 15px; background-color: #d4edda; border-radius: 6px; margin-bottom: 20px;">
+    <h3>Result</h3>
+    <pre style="background-color: white; padding: 10px; border-radius: 4px; overflow-x: auto;">{{ job.result | tojson(indent=2) }}</pre>
+    {% if job.result.file_path %}
+    <p><strong>File:</strong> <code>{{ job.result.file_path }}</code></p>
+    {% endif %}
+</div>
+{% endif %}
+
+{% if job.error_message %}
+<div style="padding: 15px; background-color: #f8d7da; border-radius: 6px; margin-bottom: 20px;">
+    <h3>Error</h3>
+    <p style="color: #721c24;">{{ job.error_message }}</p>
+</div>
+{% endif %}
+
+{% if job.status == 'running' %}
+<script>
+    // Auto-refresh every 2 seconds for running jobs
+    setTimeout(function() {
+        location.reload();
+    }, 2000);
+</script>
+{% endif %}
+
+{% endblock %}
+

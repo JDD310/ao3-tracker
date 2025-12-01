@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+
+{% block title %}AO3 Tracker – Downloader{% endblock %}
+
+{% block content %}
+<h1>AO3 Downloader</h1>
+
+{% if error %}
+<div style="padding: 15px; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 6px; margin-bottom: 20px; color: #721c24;">
+    <strong>Error:</strong> {{ error }}
+</div>
+{% endif %}
+
+<p>Download fanfiction from Archive of Our Own in bulk. All actions run in the background - you can check job status below.</p>
+
+<!-- Recent Jobs -->
+{% if recent_jobs %}
+<div style="margin-bottom: 30px; padding: 15px; background-color: #f8f9fa; border-radius: 6px;">
+    <h2>Recent Jobs</h2>
+    <table style="width: 100%;">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for job in recent_jobs %}
+            <tr>
+                <td>{{ job.id }}</td>
+                <td>{{ job.job_type }}</td>
+                <td>
+                    <span style="padding: 4px 8px; border-radius: 4px; 
+                        {% if job.status == 'completed' %}background-color: #d4edda; color: #155724;
+                        {% elif job.status == 'failed' %}background-color: #f8d7da; color: #721c24;
+                        {% elif job.status == 'running' %}background-color: #d1ecf1; color: #0c5460;
+                        {% else %}background-color: #fff3cd; color: #856404;{% endif %}">
+                        {{ job.status }}
+                    </span>
+                </td>
+                <td>{{ job.created_at }}</td>
+                <td><a href="/downloader/job/{{ job.id }}">View</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<!-- Action Forms -->
+<div style="display: grid; gap: 20px;">
+    
+    <!-- Download from AO3 Link -->
+    <div style="padding: 20px; border: 1px solid #ddd; border-radius: 6px;">
+        <h2>1. Download from AO3 Link</h2>
+        <form method="post" action="/downloader/download-from-link">
+            <div style="margin-bottom: 15px;">
+                <label for="link">AO3 URL:</label><br>
+                <input type="url" id="link" name="link" required 
+                       placeholder="https://archiveofourown.org/works/12345678"
+                       style="width: 100%; max-width: 600px; padding: 8px;">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label>File Types:</label><br>
+                <label style="margin-right: 15px;"><input type="checkbox" name="file_types" value="EPUB" checked> EPUB</label>
+                <label style="margin-right: 15px;"><input type="checkbox" name="file_types" value="MOBI"> MOBI</label>
+                <label style="margin-right: 15px;"><input type="checkbox" name="file_types" value="PDF"> PDF</label>
+                <label style="margin-right: 15px;"><input type="checkbox" name="file_types" value="HTML"> HTML</label>
+                <label style="margin-right: 15px;"><input type="checkbox" name="file_types" value="AZW3"> AZW3</label>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label for="pages">Page Limit (0 for all):</label>
+                <input type="number" id="pages" name="pages" min="0" value="0" style="width: 100px; padding: 4px;">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label><input type="checkbox" name="include_series"> Include series</label><br>
+                <label><input type="checkbox" name="download_images"> Download images</label><br>
+                <label><input type="checkbox" name="login"> Login to AO3</label>
+            </div>
+            <button type="submit" style="padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                Start Download
+            </button>
+        </form>
+    </div>
+
+    <!-- Get Links Only -->
+    <div style="padding: 20px; border: 1px solid #ddd; border-radius: 6px;">
+        <h2>2. Get Links Only</h2>
+        <form method="post" action="/downloader/get-links">
+            <div style="margin-bottom: 15px;">
+                <label for="link2">AO3 URL:</label><br>
+                <input type="url" id="link2" name="link" required 
+                       placeholder="https://archiveofourown.org/works/12345678"
+                       style="width: 100%; max-width: 600px; padding: 8px;">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label for="pages2">Page Limit (0 for all):</label>
+                <input type="number" id="pages2" name="pages" min="0" value="0" style="width: 100px; padding: 4px;">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label><input type="checkbox" name="include_series"> Include series</label><br>
+                <label><input type="checkbox" name="include_metadata"> Include metadata (CSV format)</label><br>
+                <label><input type="checkbox" name="login"> Login to AO3</label>
+            </div>
+            <button type="submit" style="padding: 10px 20px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                Get Links
+            </button>
+        </form>
+    </div>
+
+    <!-- Download from File -->
+    <div style="padding: 20px; border: 1px solid #ddd; border-radius: 6px;">
+        <h2>3. Download from File</h2>
+        <form method="post" action="/downloader/download-from-file">
+            <div style="margin-bottom: 15px;">
+                <label for="file_content">Links (one per line):</label><br>
+                <textarea id="file_content" name="file_content" rows="10" required
+                          placeholder="https://archiveofourown.org/works/12345678&#10;https://archiveofourown.org/works/87654321"
+                          style="width: 100%; max-width: 800px; padding: 8px; font-family: monospace;"></textarea>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label>File Types:</label><br>
+                <label style="margin-right: 15px;"><input type="checkbox" name="file_types" value="EPUB" checked> EPUB</label>
+                <label style="margin-right: 15px;"><input type="checkbox" name="file_types" value="MOBI"> MOBI</label>
+                <label style="margin-right: 15px;"><input type="checkbox" name="file_types" value="PDF"> PDF</label>
+                <label style="margin-right: 15px;"><input type="checkbox" name="file_types" value="HTML"> HTML</label>
+                <label style="margin-right: 15px;"><input type="checkbox" name="file_types" value="AZW3"> AZW3</label>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label><input type="checkbox" name="include_series" checked> Include series</label><br>
+                <label><input type="checkbox" name="download_images"> Download images</label><br>
+                <label><input type="checkbox" name="login"> Login to AO3</label>
+            </div>
+            <button type="submit" style="padding: 10px 20px; background-color: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                Start Download
+            </button>
+        </form>
+    </div>
+
+</div>
+
+<div style="margin-top: 30px; padding: 15px; background-color: #e7f3ff; border-radius: 6px;">
+    <h3>Settings</h3>
+    <p>Download folder: <code>{{ settings.download_folder }}</code></p>
+    <p><a href="/api/v1/downloader/settings">View/Edit Settings (API)</a></p>
+</div>
+
+{% endblock %}
+

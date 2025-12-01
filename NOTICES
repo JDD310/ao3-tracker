@@ -1,0 +1,118 @@
+# Third-Party Notices and Acknowledgments
+
+This project uses and integrates with several open-source libraries and tools. This file acknowledges all third-party components and their respective licenses.
+
+## Direct Dependencies
+
+### ao3downloader
+- **License**: GNU General Public License v3.0 (GPL-3.0)
+- **Source**: https://github.com/nianeyna/ao3downloader
+- **PyPI**: https://pypi.org/project/ao3downloader/
+- **Usage**: This project integrates with ao3downloader for downloading and processing AO3 works. The ao3downloader library is used extensively throughout the application:
+  - `ao3_downloader_adapter.py`: Core adapter for work metadata extraction
+  - `downloader_wrappers.py`: Async wrappers for all ao3downloader actions
+  - `downloader_service.py`: Job management service layer
+  - `downloader_config.py`: Configuration management
+  - `routes_downloader.py` and `routes_downloader_html.py`: API and web interface routes
+- **License Notice**: As this project uses code from ao3downloader which is licensed under GPL-3.0, please refer to the GPL-3.0 license terms. The full GPL-3.0 license text is available at https://www.gnu.org/licenses/gpl-3.0.html
+- **Integration Details**: The application provides a full web-based interface for all ao3downloader functionality, including downloading works, updating incomplete fics, managing series, and generating log visualizations. All ao3downloader actions are executed as background jobs with progress tracking.
+
+### FastAPI
+- **License**: MIT License
+- **Source**: https://github.com/tiangolo/fastapi
+- **PyPI**: https://pypi.org/project/fastapi/
+- **Usage**: Web framework for building the API and web interface
+
+### Uvicorn
+- **License**: BSD License
+- **Source**: https://github.com/encode/uvicorn
+- **PyPI**: https://pypi.org/project/uvicorn/
+- **Usage**: ASGI server for running the FastAPI application
+
+### Pydantic
+- **License**: MIT License
+- **Source**: https://github.com/pydantic/pydantic
+- **PyPI**: https://pypi.org/project/pydantic/
+- **Usage**: Data validation and settings management using Python type annotations
+
+### Jinja2
+- **License**: BSD License (3-Clause)
+- **Source**: https://github.com/pallets/jinja
+- **PyPI**: https://pypi.org/project/Jinja2/
+- **Usage**: Template engine for rendering HTML pages
+
+### BeautifulSoup4
+- **License**: MIT License (as part of the Beautiful Soup package)
+- **Source**: https://www.crummy.com/software/BeautifulSoup/
+- **PyPI**: https://pypi.org/project/beautifulsoup4/
+- **Usage**: HTML parsing for email content and web scraping
+
+### lxml
+- **License**: BSD License
+- **Source**: https://lxml.de/
+- **PyPI**: https://pypi.org/project/lxml/
+- **Usage**: XML and HTML parser backend for BeautifulSoup
+
+### Google API Python Client
+- **License**: Apache License 2.0
+- **Source**: https://github.com/googleapis/google-api-python-client
+- **PyPI**: https://pypi.org/project/google-api-python-client/
+- **Usage**: Gmail API integration for fetching subscription emails
+
+### google-auth-httplib2
+- **License**: Apache License 2.0
+- **Source**: https://github.com/googleapis/google-auth-library-python-httplib2
+- **PyPI**: https://pypi.org/project/google-auth-httplib2/
+- **Usage**: Authentication transport for Google API client
+
+### google-auth-oauthlib
+- **License**: Apache License 2.0
+- **Source**: https://github.com/googleapis/google-auth-library-python-oauthlib
+- **PyPI**: https://pypi.org/project/google-auth-oauthlib/
+- **Usage**: OAuth 2.0 client library for Google API authentication
+
+## Indirect Dependencies
+
+The following libraries are dependencies of the packages listed above:
+
+- **httpx**: ASGI HTTP client (dependency of FastAPI/Uvicorn)
+- **starlette**: ASGI framework (dependency of FastAPI)
+- **email-validator**: Email validation (dependency of Pydantic)
+- **typing-extensions**: Extended typing support (dependency of Pydantic)
+- **MarkupSafe**: String escaping for Jinja2
+- **certifi**: SSL certificate bundle
+- **urllib3**: HTTP client library
+- **pyasn1**: ASN.1 library for cryptography
+- **rsa**: RSA encryption library
+- **cachetools**: Caching utilities
+- **pyasn1-modules**: ASN.1 modules
+- **httplib2**: HTTP client library
+- **requests**: HTTP library
+- **requests-oauthlib**: OAuth library for requests
+
+## License Compatibility
+
+This project integrates components with various licenses:
+- **MIT License**: Permissive, compatible with most licenses
+- **BSD License**: Permissive, compatible with most licenses
+- **Apache License 2.0**: Permissive, compatible with most licenses
+- **GPL-3.0**: Copyleft license (from ao3downloader)
+
+**Important Note**: The integration with ao3downloader (GPL-3.0) means that if you distribute this software, you must comply with the GPL-3.0 license terms, including making source code available under GPL-3.0.
+
+## Full License Texts
+
+For the complete text of each license, please refer to:
+- **GPL-3.0**: https://www.gnu.org/licenses/gpl-3.0.html
+- **MIT License**: https://opensource.org/licenses/MIT
+- **BSD License**: https://opensource.org/licenses/BSD-3-Clause
+- **Apache License 2.0**: https://www.apache.org/licenses/LICENSE-2.0
+
+## Attribution
+
+I gratefully acknowledge the developers and maintainers of all the open-source projects that make this application possible. Without their contributions, this project would not exist.
+
+## Contact
+
+If you have questions about the use of any third-party components or licensing, please open an issue on the project repository.
+

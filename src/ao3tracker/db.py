@@ -108,8 +108,42 @@ def init_db():
         )
     """)
 
+    # Download jobs table for ao3downloader integration
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS download_jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            parameters TEXT,
+            result TEXT,
+            error_message TEXT,
+            progress_message TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            started_at TEXT,
+            completed_at TEXT
+        )
+    """)
+
+    # Download settings table for ao3downloader configuration
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS download_settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            setting_key TEXT UNIQUE NOT NULL,
+            setting_value TEXT,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
     conn.commit()
     conn.close()
+    
+    # Initialize default download settings (import here to avoid circular dependency)
+    try:
+        from ao3tracker.downloader_config import initialize_default_settings
+        initialize_default_settings()
+    except ImportError:
+        # If module not available yet, skip initialization
+        pass
 
 
 def has_processed_message(conn: sqlite3.Connection, message_id: str) -> bool:

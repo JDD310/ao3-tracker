@@ -3,10 +3,20 @@
 from __future__ import annotations
 
 import re
+import sys
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from ao3downloader import parse_soup, parse_text
+# Ensure ao3downloader is installed, then add to path
+from ao3tracker.downloader_setup import ensure_ao3downloader_installed
+
+_AO3_DOWNLOADER_DIR = ensure_ao3downloader_installed()
+if str(_AO3_DOWNLOADER_DIR) not in sys.path:
+    sys.path.insert(0, str(_AO3_DOWNLOADER_DIR))
+
+# Import from local repo
+import ao3downloader.parse_soup as parse_soup
+import ao3downloader.parse_text as parse_text
 from ao3downloader.fileio import FileOps
 from ao3downloader.repo import Repository
 
