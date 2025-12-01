@@ -33,10 +33,15 @@ except ImportError as e:
         def __init__(self, update_func=None):
             self.update_func = update_func
             self.messages = []
+            self.cancelled = False
         def update(self, message: str):
             if self.update_func:
                 self.update_func(message)
             self.messages.append(message)
+        def is_cancelled(self) -> bool:
+            return self.cancelled
+        def cancel(self):
+            self.cancelled = True
     
     async def download_from_ao3_link(*args, **kwargs):
         return {"success": False, "error": "ao3downloader not installed"}
@@ -62,6 +67,8 @@ except ImportError as e:
 
 # Store active job callbacks for progress updates
 _active_jobs: Dict[int, ProgressCallback] = {}
+# Store cancellation flags for jobs
+_cancelled_jobs: set[int] = set()
 
 
 def create_job(job_type: str, parameters: Dict[str, Any]) -> int:
@@ -198,7 +205,13 @@ async def execute_job(job_id: int, background_tasks: BackgroundTasks) -> None:
     if not job:
         return
     
-    update_job_status(job_id, "running")
+    # Check if job was cancelled before starting
+    if job_id in _cancelled_jobs:
+        update_job_status(job_id, "cancelled", progress="Job was cancelled before execution")
+        _cancelled_jobs.discard(job_id)
+        return
+    
+    update_job_status(job_id, "running", progress="Initializing job...")
     
     # Create progress callback
     progress_callback = ProgressCallback(
@@ -210,9 +223,14 @@ async def execute_job(job_id: int, background_tasks: BackgroundTasks) -> None:
         job_type = job["job_type"]
         params = job["parameters"]
         
+        if not DOWNLOADER_WRAPPERS_AVAILABLE:
+            raise ImportError("ao3downloader wrappers are not available. Please ensure ao3downloader is properly installed.")
+        
         result = None
         
         if job_type == "download_from_ao3_link":
+            if not params.get("link"):
+                raise ValueError("Link parameter is required")
             result = await download_from_ao3_link(
                 link=params["link"],
                 file_types=params.get("file_types", ["EPUB"]),
@@ -224,6 +242,8 @@ async def execute_job(job_id: int, background_tasks: BackgroundTasks) -> None:
             )
         
         elif job_type == "get_links_only":
+            if not params.get("link"):
+                raise ValueError("Link parameter is required")
             result = await get_links_only(
                 link=params["link"],
                 pages=params.get("pages"),
@@ -234,6 +254,8 @@ async def execute_job(job_id: int, background_tasks: BackgroundTasks) -> None:
             )
         
         elif job_type == "download_from_file":
+            if not params.get("file_content"):
+                raise ValueError("File content parameter is required")
             result = await download_from_file(
                 file_content=params["file_content"],
                 file_types=params.get("file_types", ["EPUB"]),
@@ -273,6 +295,8 @@ async def execute_job(job_id: int, background_tasks: BackgroundTasks) -> None:
             )
         
         elif job_type == "download_pinboard_bookmarks":
+            if not params.get("api_token"):
+                raise ValueError("API token is required")
             result = await download_pinboard_bookmarks(
                 api_token=params["api_token"],
                 include_unread=params.get("include_unread", True),
@@ -286,27 +310,91 @@ async def execute_job(job_id: int, background_tasks: BackgroundTasks) -> None:
             )
         
         elif job_type == "configure_ignore_list":
+            if not params.get("links"):
+                raise ValueError("Links parameter is required")
             result = await configure_ignore_list(
                 links=params["links"],
                 check_deleted=params.get("check_deleted", False),
                 progress_callback=progress_callback,
             )
         
+        elif job_type == "scrape_works":
+            from ao3tracker.scrape_works import scrape_and_store_works
+            import asyncio
+            
+            if not params.get("urls"):
+                raise ValueError("URLs parameter is required")
+            
+            # Run scraping in thread pool with progress callback
+            def _scrape():
+                return scrape_and_store_works(
+                    urls=params["urls"],
+                    force_rescrape=params.get("force_rescrape", False),
+                    login=params.get("login", False),
+                    progress_callback=lambda msg: progress_callback.update(msg),
+                )
+            
+            stats = await asyncio.to_thread(_scrape)
+            result = {
+                "success": True,
+                "processed": stats["processed"],
+                "inserted": stats["inserted"],
+                "updated": stats["updated"],
+                "errors": stats["errors"],
+                "message": f"Processed {stats['processed']} URLs: {stats['inserted']} inserted, {stats['updated']} updated, {len(stats['errors'])} errors",
+            }
+        
         else:
             raise ValueError(f"Unknown job type: {job_type}")
         
-        if result and result.get("success"):
-            update_job_status(job_id, "completed", result=result)
+        # Check if job was cancelled during execution
+        if job_id in _cancelled_jobs or progress_callback.is_cancelled():
+            update_job_status(job_id, "cancelled", progress="Job was cancelled by user")
+            _cancelled_jobs.discard(job_id)
+            return
+        
+        # Check result
+        if result is None:
+            update_job_status(job_id, "failed", error="Job returned no result")
+        elif result.get("success"):
+            update_job_status(job_id, "completed", result=result, progress="Job completed successfully")
         else:
-            error_msg = result.get("error", "Job failed") if result else "Unknown error"
+            error_msg = result.get("error", "Job failed without error message")
             update_job_status(job_id, "failed", error=error_msg)
     
+    except ImportError as e:
+        # Check if cancellation caused the exception
+        if job_id in _cancelled_jobs or progress_callback.is_cancelled():
+            update_job_status(job_id, "cancelled", progress="Job was cancelled by user")
+            _cancelled_jobs.discard(job_id)
+        else:
+            error_msg = f"Import error: {str(e)}. Please ensure ao3downloader is properly installed."
+            update_job_status(job_id, "failed", error=error_msg, progress=error_msg)
+    except ValueError as e:
+        # Check if cancellation caused the exception
+        if job_id in _cancelled_jobs or progress_callback.is_cancelled():
+            update_job_status(job_id, "cancelled", progress="Job was cancelled by user")
+            _cancelled_jobs.discard(job_id)
+        else:
+            error_msg = f"Invalid parameters: {str(e)}"
+            update_job_status(job_id, "failed", error=error_msg, progress=error_msg)
     except Exception as e:
-        update_job_status(job_id, "failed", error=str(e))
+        # Check if cancellation caused the exception
+        if job_id in _cancelled_jobs or progress_callback.is_cancelled():
+            update_job_status(job_id, "cancelled", progress="Job was cancelled by user")
+            _cancelled_jobs.discard(job_id)
+        else:
+            import traceback
+            error_msg = f"Unexpected error: {str(e)}"
+            error_details = traceback.format_exc()
+            update_job_status(job_id, "failed", error=error_msg, progress=error_msg)
+            # Log full traceback for debugging
+            print(f"Job {job_id} error traceback:\n{error_details}")
     
     finally:
-        # Remove from active jobs
+        # Remove from active jobs and cancelled set
         _active_jobs.pop(job_id, None)
+        _cancelled_jobs.discard(job_id)
 
 
 def get_progress(job_id: int) -> Optional[str]:
@@ -320,4 +408,37 @@ def get_progress(job_id: int) -> Optional[str]:
         return job.get("progress_message")
     
     return None
+
+
+def cancel_job(job_id: int) -> bool:
+    """
+    Cancel a running or pending job.
+    
+    Returns:
+        True if job was cancelled, False if job not found or not running
+    """
+    job = get_job(job_id)
+    if not job:
+        return False
+    
+    # If job is already completed/failed/cancelled, can't cancel
+    if job["status"] in ("completed", "failed", "cancelled"):
+        return False
+    
+    # Mark job as cancelled
+    _cancelled_jobs.add(job_id)
+    
+    # If job is running, cancel its progress callback
+    callback = _active_jobs.get(job_id)
+    if callback:
+        callback.cancel()
+    
+    # Update job status
+    if job["status"] == "running":
+        update_job_status(job_id, "cancelled", progress="Job cancelled by user")
+    else:
+        # Job is pending, mark as cancelled
+        update_job_status(job_id, "cancelled", progress="Job cancelled before execution")
+    
+    return True
 

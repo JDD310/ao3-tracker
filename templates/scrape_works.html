@@ -60,6 +60,16 @@
         </label>
     </div>
     
+    <div style="margin-bottom: 15px;">
+        <label>
+            <input type="checkbox" name="login" value="true">
+            Login to AO3 (required for locked works)
+        </label>
+        <p style="font-size: 0.9em; color: #666; margin-top: 5px;">
+            Uses credentials from downloader settings. Make sure username and password are configured.
+        </p>
+    </div>
+    
     <div>
         <button type="submit" style="padding: 10px 20px; font-size: 16px;">Scrape Works</button>
         <a href="/works" style="margin-left: 10px;">Back to Works</a>
@@ -73,7 +83,8 @@
         <li>URLs can be in any format (full URL, short URL, etc.)</li>
         <li>The system will normalize URLs and extract work IDs automatically</li>
         <li>If a work already exists, it will be skipped unless "Force rescrape" is checked</li>
-        <li>Locked or deleted works will show an error message</li>
+        <li>Locked works require login - enable "Login to AO3" and configure credentials in downloader settings</li>
+        <li>Deleted works will show an error message</li>
     </ul>
 </div>
 {% endblock %}

@@ -20,6 +20,8 @@ from ao3tracker.db import (
     has_processed_message,
     mark_processed_message,
     upsert_work_and_add_update,
+    log_ingestion_start,
+    log_ingestion_complete,
 )
 
 
@@ -314,6 +316,10 @@ def parse_ao3_email(body: str, content_type: str, email_subject: str) -> Optiona
 def ingest_new_ao3_emails_imap(max_messages: Optional[int] = 100):
     init_db()
     conn = get_connection()
+    
+    # Log the start of ingestion
+    log_id = log_ingestion_start(conn)
+    error_message = None
 
     mail = connect_imap()
     try:
@@ -387,8 +393,25 @@ def ingest_new_ao3_emails_imap(max_messages: Optional[int] = 100):
 
         print(f"Done. Processed {processed_count} new messages, skipped {skipped_count} already-seen.")
 
+    except Exception as e:
+        error_message = str(e)
+        print(f"Error during ingestion: {error_message}")
+        import traceback
+        traceback.print_exc()
     finally:
-        mail.logout()
+        try:
+            mail.logout()
+        except:
+            pass
+        # Log the completion of ingestion
+        log_ingestion_complete(
+            conn,
+            log_id,
+            messages_processed=processed_count,
+            messages_skipped=skipped_count,
+            error_message=error_message,
+        )
+        conn.close()
 
 
 if __name__ == "__main__":

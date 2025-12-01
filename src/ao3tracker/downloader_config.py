@@ -56,6 +56,10 @@ def set_setting(key: str, value: Any) -> None:
     conn = get_connection()
     cur = conn.cursor()
     
+    # Special handling: if save_password is being set to False, delete password
+    if key == "save_password" and value is False:
+        cur.execute("DELETE FROM download_settings WHERE setting_key = ?", ("password",))
+    
     # Convert value to JSON string if it's not a string
     if isinstance(value, (list, dict, bool)):
         value_str = json.dumps(value)

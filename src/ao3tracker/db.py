@@ -134,6 +134,19 @@ def init_db():
         )
     """)
 
+    # Ingestion log table to track when IMAP ingestion runs
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS ingestion_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            status TEXT NOT NULL,
+            messages_processed INTEGER DEFAULT 0,
+            messages_skipped INTEGER DEFAULT 0,
+            error_message TEXT
+        )
+    """)
+
     conn.commit()
     conn.close()
     
@@ -426,3 +439,50 @@ def upsert_work_with_metadata(
     
     conn.commit()
     return work_id
+
+
+def log_ingestion_start(conn: sqlite3.Connection) -> int:
+    """Log the start of an IMAP ingestion run. Returns the log entry ID."""
+    from datetime import datetime
+    cur = conn.cursor()
+    started_at = datetime.utcnow().isoformat()
+    cur.execute("""
+        INSERT INTO ingestion_log (started_at, status)
+        VALUES (?, 'running')
+    """, (started_at,))
+    log_id = cur.lastrowid
+    conn.commit()
+    return log_id
+
+
+def log_ingestion_complete(
+    conn: sqlite3.Connection,
+    log_id: int,
+    messages_processed: int = 0,
+    messages_skipped: int = 0,
+    error_message: Optional[str] = None,
+):
+    """Log the completion of an IMAP ingestion run."""
+    from datetime import datetime
+    cur = conn.cursor()
+    completed_at = datetime.utcnow().isoformat()
+    status = "error" if error_message else "completed"
+    cur.execute("""
+        UPDATE ingestion_log
+        SET completed_at = ?, status = ?, messages_processed = ?, messages_skipped = ?, error_message = ?
+        WHERE id = ?
+    """, (completed_at, status, messages_processed, messages_skipped, error_message, log_id))
+    conn.commit()
+
+
+def get_last_ingestion_time(conn: sqlite3.Connection) -> Optional[str]:
+    """Get the timestamp of the last completed ingestion run."""
+    cur = conn.cursor()
+    row = cur.execute("""
+        SELECT completed_at
+        FROM ingestion_log
+        WHERE status = 'completed'
+        ORDER BY completed_at DESC
+        LIMIT 1
+    """).fetchone()
+    return row[0] if row else None

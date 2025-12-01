@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import configparser
 import csv
 import datetime
 import io
@@ -46,21 +47,38 @@ class ProgressCallback:
     def __init__(self, update_func: Optional[Callable[[str], None]] = None):
         self.update_func = update_func
         self.messages: List[str] = []
+        self.cancelled: bool = False
     
     def update(self, message: str):
         """Update progress message."""
         self.messages.append(message)
         if self.update_func:
             self.update_func(message)
+    
+    def is_cancelled(self) -> bool:
+        """Check if this callback has been cancelled."""
+        return self.cancelled
+    
+    def cancel(self):
+        """Mark this callback as cancelled."""
+        self.cancelled = True
 
 
 def create_fileops_with_settings() -> FileOps:
     """Create FileOps instance with settings from database."""
     fileops = FileOps()
     
+    # Initialize FileOps - this creates necessary directories (logs, download folder, etc.)
+    # This must be called before using FileOps to ensure directories exist
+    fileops.initialize()
+    
     # Override settings from database
     download_folder = get_download_folder()
     fileops.downloadfolder = str(download_folder)
+    
+    # Ensure download folder exists (initialize() may have created a different one)
+    from pathlib import Path
+    Path(fileops.downloadfolder).mkdir(parents=True, exist_ok=True)
     
     # Update ini values if they exist in database
     debug_logging = get_setting("debug_logging", False)
@@ -98,6 +116,9 @@ async def download_from_ao3_link(
         Dict with download results
     """
     def _download():
+        if not AO3DOWNLOADER_AVAILABLE:
+            raise ImportError("ao3downloader is not available")
+        
         fileops = create_fileops_with_settings()
         with Repository(fileops) as repo:
             if login:
@@ -111,14 +132,47 @@ async def download_from_ao3_link(
                     except Exception as e:
                         if progress_callback:
                             progress_callback.update(f"Login failed: {str(e)}")
+                        raise
             
-            visited = shared.visited(fileops, file_types)
+            # Build visited list from log files and ignore list
+            visited = []
+            try:
+                logs = fileops.load_logfile()
+                if logs:
+                    from ao3downloader import parse_text
+                    titles = parse_text.get_title_dict(logs)
+                    maximum = fileops.get_ini_value_integer(
+                        strings.INI_NAME_LENGTH if strings else "name_length",
+                        strings.INI_DEFAULT_NAME_LENGTH if strings else 100
+                    )
+                    visited = list({x for x in titles if 
+                        fileops.file_exists(x, titles, file_types, maximum)})
+            except Exception as e:
+                if progress_callback:
+                    progress_callback.update(f"Warning: Could not load visited list: {str(e)}")
+            
+            # Add ignore list items
+            try:
+                ignore_file = Path(fileops.downloadfolder) / (strings.IGNORELIST_FILE_NAME if strings else "ignorelist.txt")
+                if ignore_file.exists():
+                    with open(ignore_file, 'r', encoding='utf-8') as f:
+                        visited.extend([x[:x.find('; ')] if '; ' in x else x.strip() 
+                                       for x in f.readlines() if x.strip()])
+            except Exception as e:
+                if progress_callback:
+                    progress_callback.update(f"Warning: Could not load ignore list: {str(e)}")
             
             if progress_callback:
-                progress_callback.update("Starting download...")
+                progress_callback.update(f"Starting download from {link}...")
             
-            ao3 = Ao3(repo, fileops, file_types, pages, include_series, download_images)
+            # Convert pages: None means all pages, 0 also means all
+            pages_int = pages if pages is not None and pages > 0 else 0
+            
+            ao3 = Ao3(repo, fileops, file_types, pages_int, include_series, download_images)
             ao3.download(link, visited)
+            
+            if progress_callback:
+                progress_callback.update("Download completed successfully")
             
             return {
                 "success": True,
@@ -127,6 +181,79 @@ async def download_from_ao3_link(
             }
     
     return await asyncio.to_thread(_download)
+
+
+class ProgressReportingAo3(Ao3):
+    """Custom Ao3 class that reports progress via callback."""
+    
+    def __init__(self, repo, fileops, filetypes, pages, series, images, progress_callback=None):
+        super().__init__(repo, fileops, filetypes, pages, series, images)
+        self.progress_callback = progress_callback
+        self.links_count = 0
+        self.current_page = 0
+    
+    def get_work_links_recursive(self, links_list: dict, link: str, visited_series: list, metadata: bool, soup=None):
+        """Override to add progress reporting."""
+        from ao3downloader import parse_text, parse_soup, strings
+        
+        if parse_text.is_work(link):
+            if link not in links_list:
+                self.links_count += 1
+                if self.progress_callback:
+                    # Extract work ID for display
+                    work_id = parse_text.get_work_number(link) or "unknown"
+                    self.progress_callback.update(f"Found work #{self.links_count}: {work_id}")
+                if metadata:
+                    metadata_dict = parse_soup.get_work_metadata_from_list(soup, link)
+                    links_list[link] = metadata_dict
+                else:
+                    links_list[link] = None
+        elif parse_text.is_series(link):
+            if link not in visited_series:
+                visited_series.append(link)
+                if self.progress_callback:
+                    self.progress_callback.update(f"Processing series: {link}")
+                while True:
+                    series_soup = self.repo.get_soup(link)
+                    series_soup = self.proceed(series_soup)
+                    work_urls = parse_soup.get_work_urls(series_soup)
+                    if len(work_urls) == 0:
+                        break
+                    for work_url in work_urls:
+                        self.get_work_links_recursive(links_list, work_url, visited_series, metadata, series_soup)
+                    link = parse_text.get_next_page(link)
+        elif strings.AO3_BASE_URL in link:
+            while True:
+                self.current_page += 1
+                if self.progress_callback:
+                    self.progress_callback.update(f"Processing page {self.current_page}...")
+                
+                self.fileops.write_log({'link': link, 'message': strings.INFO_STARTING_PAGE, 'level': 'debug'})
+                thesoup = self.repo.get_soup(link)
+                urls = parse_soup.get_work_and_series_urls(thesoup, self.series)
+                if len(urls) == 0:
+                    if self.debug:
+                        self.fileops.write_log({'link': link, 'message': strings.INFO_NO_WORKS_ON_PAGE, 'level': 'debug'})
+                    break
+                
+                if self.progress_callback:
+                    self.progress_callback.update(f"Page {self.current_page}: Found {len(urls)} works/series")
+                
+                for url in urls:
+                    self.get_work_links_recursive(links_list, url, visited_series, metadata, thesoup)
+                
+                link = parse_text.get_next_page(link)
+                pagenum = parse_text.get_page_number(link)
+                if self.pages and pagenum == self.pages + 1:
+                    if self.debug:
+                        self.fileops.write_log({'link': link, 'message': strings.INFO_PAGE_LIMIT_REACHED, 'level': 'debug'})
+                    break
+                
+                if self.progress_callback:
+                    self.progress_callback.update(f"Completed page {pagenum - 1}, starting page {pagenum}")
+        else:
+            from ao3downloader import exceptions
+            raise exceptions.InvalidLinkException(f"Invalid link: {link}")
 
 
 async def get_links_only(
@@ -152,8 +279,35 @@ async def get_links_only(
         Dict with links and file path
     """
     def _get_links():
+        if not AO3DOWNLOADER_AVAILABLE:
+            raise ImportError("ao3downloader is not available")
+        
         fileops = create_fileops_with_settings()
+        
+        # Ensure Repository has proper retry settings from our config
+        # The Repository class reads from ini file via fileops.get_ini_value_integer()
+        # We need to update the ini file with our settings
+        extra_wait = get_setting("extra_wait_time", 0)
+        max_retries = get_setting("max_retries", 0)
+        
+        # Update ini file with our settings so Repository can use them for rate limiting
+        if strings:
+            ini_file = fileops.inifile
+            if os.path.exists(ini_file):
+                config = configparser.ConfigParser()
+                config.read(ini_file)
+                if 'Settings' not in config:
+                    config.add_section('Settings')
+                config.set('Settings', strings.INI_WAIT_TIME, str(extra_wait))
+                config.set('Settings', strings.INI_MAX_RETRIES, str(max_retries))
+                with open(ini_file, 'w') as f:
+                    config.write(f)
+        
         with Repository(fileops) as repo:
+            # Repository automatically handles rate limiting (429 errors) via retry-after header
+            # When AO3 returns 429, it reads the 'retry-after' header and waits that many seconds
+            # It will wait as long as needed when rate limited - no action needed from us
+            
             if login:
                 username = get_setting("username", "")
                 password = get_setting("password", "")
@@ -165,11 +319,16 @@ async def get_links_only(
                     except Exception as e:
                         if progress_callback:
                             progress_callback.update(f"Login failed: {str(e)}")
+                        raise
             
             if progress_callback:
-                progress_callback.update("Fetching links...")
+                progress_callback.update(f"Fetching links from {link}...")
             
-            ao3 = Ao3(repo, fileops, None, pages, include_series, False)
+            # Convert pages: None means all pages, 0 also means all
+            pages_int = pages if pages is not None and pages > 0 else 0
+            
+            # Use our custom Ao3 class with progress reporting
+            ao3 = ProgressReportingAo3(repo, fileops, None, pages_int, include_series, False, progress_callback)
             links = ao3.get_work_links(link, include_metadata)
             
             download_folder = Path(fileops.downloadfolder)
@@ -192,6 +351,9 @@ async def get_links_only(
                             except ValueError:
                                 fileops.write_log(item)
                 
+                if progress_callback:
+                    progress_callback.update(f"Found {len(flattened)} links with metadata")
+                
                 return {
                     "success": True,
                     "file_path": str(filepath),
@@ -207,6 +369,9 @@ async def get_links_only(
                 with open(filepath, 'w', encoding='utf-8') as f:
                     for l in links:
                         f.write(l + '\n')
+                
+                if progress_callback:
+                    progress_callback.update(f"Found {len(links)} links")
                 
                 return {
                     "success": True,
@@ -248,6 +413,9 @@ async def download_from_file(
         Dict with download results
     """
     def _download():
+        if not AO3DOWNLOADER_AVAILABLE:
+            raise ImportError("ao3downloader is not available")
+        
         fileops = create_fileops_with_settings()
         with Repository(fileops) as repo:
             if login:
@@ -261,8 +429,35 @@ async def download_from_file(
                     except Exception as e:
                         if progress_callback:
                             progress_callback.update(f"Login failed: {str(e)}")
+                        raise
             
-            visited = shared.visited(fileops, file_types)
+            # Build visited list from log files and ignore list
+            visited = []
+            try:
+                logs = fileops.load_logfile()
+                if logs:
+                    from ao3downloader import parse_text
+                    titles = parse_text.get_title_dict(logs)
+                    maximum = fileops.get_ini_value_integer(
+                        strings.INI_NAME_LENGTH if strings else "name_length",
+                        strings.INI_DEFAULT_NAME_LENGTH if strings else 100
+                    )
+                    visited = list({x for x in titles if 
+                        fileops.file_exists(x, titles, file_types, maximum)})
+            except Exception as e:
+                if progress_callback:
+                    progress_callback.update(f"Warning: Could not load visited list: {str(e)}")
+            
+            # Add ignore list items
+            try:
+                ignore_file = Path(fileops.downloadfolder) / (strings.IGNORELIST_FILE_NAME if strings else "ignorelist.txt")
+                if ignore_file.exists():
+                    with open(ignore_file, 'r', encoding='utf-8') as f:
+                        visited.extend([x[:x.find('; ')] if '; ' in x else x.strip() 
+                                       for x in f.readlines() if x.strip()])
+            except Exception as e:
+                if progress_callback:
+                    progress_callback.update(f"Warning: Could not load ignore list: {str(e)}")
             
             links = [l.strip() for l in file_content.split('\n') if l.strip()]
             
@@ -281,9 +476,16 @@ async def download_from_file(
                 except Exception as e:
                     results.append({"link": link, "success": False, "error": str(e)})
             
+            success_count = sum(1 for r in results if r.get("success"))
+            
+            if progress_callback:
+                progress_callback.update(f"Completed: {success_count}/{len(links)} successful")
+            
             return {
                 "success": True,
                 "total": len(links),
+                "successful": success_count,
+                "failed": len(links) - success_count,
                 "results": results,
                 "download_folder": fileops.downloadfolder,
             }
@@ -541,9 +743,12 @@ async def configure_ignore_list(
         Dict with results
     """
     def _configure():
+        if not AO3DOWNLOADER_AVAILABLE:
+            raise ImportError("ao3downloader is not available")
+        
         fileops = create_fileops_with_settings()
         download_folder = Path(fileops.downloadfolder)
-        ignore_file = download_folder / strings.IGNORELIST_FILE_NAME
+        ignore_file = download_folder / (strings.IGNORELIST_FILE_NAME if strings else "ignorelist.txt")
         
         if progress_callback:
             progress_callback.update("Updating ignore list...")

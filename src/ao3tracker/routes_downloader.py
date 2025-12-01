@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from ao3tracker.downloader_config import get_all_settings, get_setting, set_setting
 from ao3tracker.downloader_service import (
+    cancel_job,
     create_job,
     execute_job,
     get_job,
@@ -219,6 +220,15 @@ async def get_job_progress(job_id: int):
     return {"job_id": job_id, "progress": progress}
 
 
+@router.post("/jobs/{job_id}/cancel")
+async def cancel_job_endpoint(job_id: int):
+    """Cancel a running or pending job."""
+    success = cancel_job(job_id)
+    if not success:
+        raise HTTPException(status_code=400, detail="Job cannot be cancelled (not found or already completed/failed)")
+    return {"status": "success", "message": "Job cancelled"}
+
+
 # Settings endpoints
 @router.get("/settings")
 async def get_settings():
@@ -229,8 +239,21 @@ async def get_settings():
 @router.post("/settings")
 async def update_settings(settings: dict):
     """Update downloader settings."""
+    from ao3tracker.downloader_config import get_setting
+    
+    # Get current save_password setting (before updating)
+    current_save_password = get_setting("save_password", False)
+    
+    # Update all settings first
     for key, value in settings.items():
         set_setting(key, value)
+    
+    # After updating, check if save_password is False (either was set to False or is currently False)
+    # If save_password is False, delete the password
+    final_save_password = settings.get("save_password", current_save_password)
+    if not final_save_password:
+        set_setting("password", "")
+    
     return {"status": "success", "message": "Settings updated"}
 
 

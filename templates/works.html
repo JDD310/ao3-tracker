@@ -26,6 +26,14 @@
             </select>
         </div>
         <div>
+            <label for="sort">Sort by:</label>
+            <select id="sort" name="sort">
+                <option value="title" {% if sort == 'title' or not sort %}selected{% endif %}>Title (A-Z)</option>
+                <option value="word_count" {% if sort == 'word_count' %}selected{% endif %}>Word Count</option>
+                <option value="next_release" {% if sort == 'next_release' %}selected{% endif %}>Next Expected Release</option>
+            </select>
+        </div>
+        <div>
             <button type="submit">Filter</button>
             <a href="/works" style="margin-left: 10px;">Clear</a>
         </div>
@@ -40,7 +48,9 @@
         <tr>
             <th>Title</th>
             <th>Author</th>
+            <th>Word Count</th>
             <th>Last Update</th>
+            <th>Next Expected Release</th>
             <th>Actions</th>
         </tr>
     </thead>
@@ -50,11 +60,25 @@
             <td><a href="/works/{{ work.id }}">{{ work.title }}</a></td>
             <td>{{ work.author }}</td>
             <td>
+                {% if work.total_word_count %}
+                    {{ "{:,}".format(work.total_word_count) }}
+                {% else %}
+                    N/A
+                {% endif %}
+            </td>
+            <td>
                 {% if work.last_seen_chapter %}
                     {{ work.last_seen_chapter }}
                 {% endif %}
                 {% if work.last_update_at %}
                     ({{ work.last_update_at }})
+                {% endif %}
+            </td>
+            <td>
+                {% if work.next_expected_release %}
+                    <span class="next-release-date">{{ work.next_expected_release }}</span>
+                {% else %}
+                    N/A
                 {% endif %}
             </td>
             <td>
@@ -71,13 +95,13 @@
 {% if total_pages > 1 %}
 <div style="margin-top: 20px; text-align: center;">
     {% if page > 1 %}
-        <a href="?page={{ page - 1 }}&author={{ author }}&filter={{ filter }}">← Previous</a>
+        <a href="?page={{ page - 1 }}&author={{ author }}&filter={{ filter }}&sort={{ sort }}">← Previous</a>
     {% endif %}
     
     <span style="margin: 0 20px;">Page {{ page }} of {{ total_pages }}</span>
     
     {% if page < total_pages %}
-        <a href="?page={{ page + 1 }}&author={{ author }}&filter={{ filter }}">Next →</a>
+        <a href="?page={{ page + 1 }}&author={{ author }}&filter={{ filter }}&sort={{ sort }}">Next →</a>
     {% endif %}
 </div>
 {% endif %}
@@ -85,5 +109,22 @@
 {% else %}
 <p>No works found. {% if author %}<a href="/works">Clear filters</a>{% endif %}</p>
 {% endif %}
+
+<script>
+    // Format next release dates
+    document.querySelectorAll('.next-release-date').forEach(el => {
+        const dateStr = el.textContent;
+        try {
+            const date = new Date(dateStr);
+            el.textContent = date.toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
+            });
+        } catch (e) {
+            // Keep original if parsing fails
+        }
+    });
+</script>
 {% endblock %}
 

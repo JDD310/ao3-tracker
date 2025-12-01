@@ -114,12 +114,22 @@ def parse_words(words_str: str) -> Optional[int]:
         return None
 
 
-def fetch_work_metadata_via_ao3_downloader(url: str) -> Dict[str, Any]:
+def fetch_work_metadata_via_ao3_downloader(
+    url: str, 
+    login: bool = False, 
+    username: str = None, 
+    password: str = None,
+    repo: Optional[Repository] = None
+) -> Dict[str, Any]:
     """
     Fetch work metadata using ao3downloader.
     
     Args:
         url: AO3 work URL (will be normalized)
+        login: Whether to login to AO3 (ignored if repo is provided - repo should already be logged in)
+        username: AO3 username (if None, will try to get from settings)
+        password: AO3 password (if None, will try to get from settings)
+        repo: Optional Repository instance to reuse (if None, creates new one)
     
     Returns:
         Dict with keys matching database columns
@@ -132,72 +142,161 @@ def fetch_work_metadata_via_ao3_downloader(url: str) -> Dict[str, Any]:
     normalized_url = normalize_work_url(url)
     work_id = extract_work_id(normalized_url)
     
-    # Create FileOps instance (minimal, for Repository initialization)
-    fileops = FileOps()
-    
-    # Use Repository as context manager
-    with Repository(fileops) as repo:
-        # Fetch the work page
+    # Use provided repo or create new one
+    if repo is not None:
+        # Reuse existing repository (should already be logged in if needed)
         soup = repo.get_soup(normalized_url)
+    else:
+        # Create new FileOps and Repository (for backward compatibility)
+        fileops = FileOps()
+        fileops.initialize()  # Ensure directories exist
         
-        # Check for deleted works
-        if parse_soup.is_deleted(soup):
-            raise ValueError(f"Work {work_id} has been deleted")
-        
-        # Check for locked works (would need login to access)
-        if parse_soup.is_locked(soup):
-            raise ValueError(f"Work {work_id} is locked and requires login")
-        
-        # Handle explicit content warning (proceed through it)
-        if parse_soup.is_explicit(soup):
-            proceed_url = parse_soup.get_proceed_link(soup)
-            soup = repo.get_soup(proceed_url)
-        
-        # Extract metadata
-        metadata = parse_soup.get_work_metadata_from_work(soup, normalized_url)
-        
-        # Parse chapters
-        chapters_current, chapters_max = parse_chapters(metadata.get("chapters", ""))
-        
-        # Parse word count
-        words = parse_words(metadata.get("words", ""))
-        
-        # Determine status (complete vs in-progress)
-        # AO3 doesn't always provide this directly, but we can infer from chapters
-        status = None
-        if chapters_max is not None and chapters_current is not None:
-            status = "complete" if chapters_current >= chapters_max else "in-progress"
-        elif chapters_current is not None and chapters_max is None:
-            # If we have current but no max, assume in-progress
-            status = "in-progress"
-        
-        # Parse dates
-        published_at = parse_date(metadata.get("published", ""))
-        updated_at = parse_date(metadata.get("updated", ""))
-        
-        # Map ao3downloader metadata to our database format
-        result = {
-            "ao3_id": work_id,
-            "title": metadata.get("title", ""),
-            "author": metadata.get("author", ""),
-            "url": normalized_url,
-            "fandoms": metadata.get("fandom", ""),  # ao3downloader uses 'fandom' (singular)
-            "rating": metadata.get("rating", ""),
-            "archive_warnings": metadata.get("warning", ""),  # ao3downloader uses 'warning'
-            "categories": metadata.get("category", ""),  # ao3downloader uses 'category'
-            "relationships": metadata.get("pairing", ""),  # ao3downloader uses 'pairing'
-            "characters": "",  # Not available from get_work_metadata_from_work
-            "additional_tags": "",  # Not available from get_work_metadata_from_work
-            "language": metadata.get("language", ""),
-            "chapters_current": chapters_current,
-            "chapters_max": chapters_max,
-            "status": status,
-            "published_at": published_at,
-            "updated_at": updated_at,
-            "summary_html": "",  # Not available from get_work_metadata_from_work
-            "total_word_count": words,
-            "metadata_source": "scrape",
-        }
-        
-        return result
+        # Use Repository as context manager
+        with Repository(fileops) as repo:
+            # Login if requested
+            if login:
+                from ao3tracker.downloader_config import get_setting
+                if not username:
+                    username = get_setting("username", "")
+                if not password:
+                    password = get_setting("password", "")
+                
+                if username and password:
+                    try:
+                        repo.login(username, password)
+                    except Exception as e:
+                        raise ValueError(f"Login failed: {str(e)}")
+                else:
+                    raise ValueError("Login requested but no credentials provided. Please set username and password in downloader settings.")
+            
+            # Fetch the work page
+            soup = repo.get_soup(normalized_url)
+            
+            # Check for deleted works
+            if parse_soup.is_deleted(soup):
+                raise ValueError(f"Work {work_id} has been deleted")
+            
+            # Check for locked works (would need login to access)
+            if parse_soup.is_locked(soup):
+                if not login:
+                    raise ValueError(f"Work {work_id} is locked and requires login. Please enable login option.")
+                else:
+                    # If we're logged in but still locked, there might be an issue
+                    raise ValueError(f"Work {work_id} is locked and could not be accessed even with login")
+            
+            # Handle explicit content warning (proceed through it)
+            if parse_soup.is_explicit(soup):
+                proceed_url = parse_soup.get_proceed_link(soup)
+                soup = repo.get_soup(proceed_url)
+            
+            # Extract metadata
+            metadata = parse_soup.get_work_metadata_from_work(soup, normalized_url)
+            
+            # Parse chapters
+            chapters_current, chapters_max = parse_chapters(metadata.get("chapters", ""))
+            
+            # Parse word count
+            words = parse_words(metadata.get("words", ""))
+            
+            # Determine status (complete vs in-progress)
+            # AO3 doesn't always provide this directly, but we can infer from chapters
+            status = None
+            if chapters_max is not None and chapters_current is not None:
+                status = "complete" if chapters_current >= chapters_max else "in-progress"
+            elif chapters_current is not None and chapters_max is None:
+                # If we have current but no max, assume in-progress
+                status = "in-progress"
+            
+            # Parse dates
+            published_at = parse_date(metadata.get("published", ""))
+            updated_at = parse_date(metadata.get("updated", ""))
+            
+            # Map ao3downloader metadata to our database format
+            result = {
+                "ao3_id": work_id,
+                "title": metadata.get("title", ""),
+                "author": metadata.get("author", ""),
+                "url": normalized_url,
+                "fandoms": metadata.get("fandom", ""),  # ao3downloader uses 'fandom' (singular)
+                "rating": metadata.get("rating", ""),
+                "archive_warnings": metadata.get("warning", ""),  # ao3downloader uses 'warning'
+                "categories": metadata.get("category", ""),  # ao3downloader uses 'category'
+                "relationships": metadata.get("pairing", ""),  # ao3downloader uses 'pairing'
+                "characters": "",  # Not available from get_work_metadata_from_work
+                "additional_tags": "",  # Not available from get_work_metadata_from_work
+                "language": metadata.get("language", ""),
+                "chapters_current": chapters_current,
+                "chapters_max": chapters_max,
+                "status": status,
+                "published_at": published_at,
+                "updated_at": updated_at,
+                "summary_html": "",  # Not available from get_work_metadata_from_work
+                "total_word_count": words,
+                "metadata_source": "scrape",
+            }
+            
+            return result
+    
+    # If using provided repo, continue with metadata extraction
+    # Check for deleted works
+    if parse_soup.is_deleted(soup):
+        raise ValueError(f"Work {work_id} has been deleted")
+    
+    # Check for locked works (would need login to access)
+    if parse_soup.is_locked(soup):
+        # If repo was provided, assume login was already done
+        raise ValueError(f"Work {work_id} is locked and could not be accessed")
+    
+    # Handle explicit content warning (proceed through it)
+    if parse_soup.is_explicit(soup):
+        proceed_url = parse_soup.get_proceed_link(soup)
+        soup = repo.get_soup(proceed_url)
+    
+    # Extract metadata
+    metadata = parse_soup.get_work_metadata_from_work(soup, normalized_url)
+    
+    # Parse chapters
+    chapters_current, chapters_max = parse_chapters(metadata.get("chapters", ""))
+    
+    # Parse word count
+    words = parse_words(metadata.get("words", ""))
+    
+    # Determine status (complete vs in-progress)
+    # AO3 doesn't always provide this directly, but we can infer from chapters
+    status = None
+    if chapters_max is not None and chapters_current is not None:
+        status = "complete" if chapters_current >= chapters_max else "in-progress"
+    elif chapters_current is not None and chapters_max is None:
+        # If we have current but no max, assume in-progress
+        status = "in-progress"
+    
+    # Parse dates
+    published_at = parse_date(metadata.get("published", ""))
+    updated_at = parse_date(metadata.get("updated", ""))
+    
+    # Map ao3downloader metadata to our database format
+    result = {
+        "ao3_id": work_id,
+        "title": metadata.get("title", ""),
+        "author": metadata.get("author", ""),
+        "url": normalized_url,
+        "fandoms": metadata.get("fandom", ""),  # ao3downloader uses 'fandom' (singular)
+        "rating": metadata.get("rating", ""),
+        "archive_warnings": metadata.get("warning", ""),  # ao3downloader uses 'warning'
+        "categories": metadata.get("category", ""),  # ao3downloader uses 'category'
+        "relationships": metadata.get("pairing", ""),  # ao3downloader uses 'pairing'
+        "characters": "",  # Not available from get_work_metadata_from_work
+        "additional_tags": "",  # Not available from get_work_metadata_from_work
+        "language": metadata.get("language", ""),
+        "chapters_current": chapters_current,
+        "chapters_max": chapters_max,
+        "status": status,
+        "published_at": published_at,
+        "updated_at": updated_at,
+        "summary_html": "",  # Not available from get_work_metadata_from_work
+        "total_word_count": words,
+        "metadata_source": "scrape",
+    }
+    
+    return result
 

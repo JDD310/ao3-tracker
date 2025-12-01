@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, Request, Form
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request, Form
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -93,6 +93,10 @@ async def list_updates(
     
     total_pages = (total + page_size - 1) // page_size
     
+    # Get last ingestion time
+    from ao3tracker.db import get_last_ingestion_time
+    last_ingestion_time = get_last_ingestion_time(conn)
+    
     conn.close()
     return templates.TemplateResponse(
         "updates.html",
@@ -107,6 +111,7 @@ async def list_updates(
             "date_from": date_from or "",
             "date_to": date_to or "",
             "unread_only": unread_only,
+            "last_ingestion_time": last_ingestion_time,
         },
     )
 
@@ -118,7 +123,10 @@ async def list_works(
     page_size: int = Query(50, ge=1, le=100),
     author: Optional[str] = None,
     filter: Optional[str] = Query(None, description="Filter: 'updated' for works with updates, 'all' for all works"),
+    sort: Optional[str] = Query("title", description="Sort by: 'title', 'word_count', 'next_release'"),
 ):
+    from ao3tracker.utils import calculate_work_statistics
+    
     conn = get_connection()
     cur = conn.cursor()
     
@@ -139,8 +147,8 @@ async def list_works(
     count_query = f"SELECT COUNT(*) FROM works w WHERE {where_clause}"
     total = cur.execute(count_query, params).fetchone()[0]
     
-    # Get paginated results with most recent chapter label
-    offset = (page - 1) * page_size
+    # Get all works with word count and most recent chapter label
+    # We'll fetch all matching works, calculate next_expected_release, sort, then paginate
     query = f"""
         SELECT
             w.id,
@@ -149,6 +157,7 @@ async def list_works(
             w.author,
             w.url,
             w.last_update_at,
+            w.total_word_count,
             (SELECT u.chapter_label 
              FROM updates u 
              WHERE u.work_id = w.id 
@@ -156,12 +165,39 @@ async def list_works(
              LIMIT 1) AS last_seen_chapter
         FROM works w
         WHERE {where_clause}
-        ORDER BY w.title ASC
-        LIMIT ? OFFSET ?
     """
-    params.extend([page_size, offset])
     rows = cur.execute(query, params).fetchall()
-    works = [dict(row) for row in rows]
+    all_works = [dict(row) for row in rows]
+    
+    # Calculate next_expected_release for each work
+    for work in all_works:
+        work_id = work["id"]
+        # Get updates for this work
+        updates_query = """
+            SELECT email_date, work_word_count, chapter_word_count
+            FROM updates
+            WHERE work_id = ?
+            ORDER BY email_date ASC
+        """
+        update_rows = cur.execute(updates_query, (work_id,)).fetchall()
+        updates = [dict(row) for row in update_rows]
+        
+        # Calculate statistics including next_expected_release
+        stats = calculate_work_statistics(updates, work)
+        work["next_expected_release"] = stats.get("next_expected_release")
+    
+    # Sort works based on sort parameter
+    if sort == "word_count":
+        all_works.sort(key=lambda x: (x.get("total_word_count") is None, x.get("total_word_count") or 0), reverse=True)
+    elif sort == "next_release":
+        # Sort by next_expected_release (None values go to end)
+        all_works.sort(key=lambda x: (x.get("next_expected_release") is None, x.get("next_expected_release") or ""))
+    else:  # Default: sort by title
+        all_works.sort(key=lambda x: (x.get("title") or "").lower())
+    
+    # Apply pagination
+    offset = (page - 1) * page_size
+    works = all_works[offset:offset + page_size]
     
     total_pages = (total + page_size - 1) // page_size
     
@@ -177,8 +213,67 @@ async def list_works(
             "total_pages": total_pages,
             "author": author or "",
             "filter": filter or "all",
+            "sort": sort or "title",
         },
     )
+
+
+# IMPORTANT: /works/scrape routes must be defined BEFORE /works/{work_id}
+# Otherwise FastAPI will match /works/scrape as work_id="scrape"
+@router.get("/works/scrape", response_class=HTMLResponse)
+async def scrape_works_form(request: Request):
+    """Show form for submitting AO3 work URLs to scrape."""
+    return templates.TemplateResponse(
+        "scrape_works.html",
+        {
+            "request": request,
+        },
+    )
+
+
+@router.post("/works/scrape", response_class=HTMLResponse)
+async def scrape_works_submit(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    urls: str = Form(...),
+    force_rescrape: bool = Form(False),
+    login: bool = Form(False),
+):
+    """Process URL submission and scrape metadata."""
+    from ao3tracker.downloader_service import create_job, execute_job
+    
+    # Parse URLs (one per line)
+    url_list = [url.strip() for url in urls.split("\n") if url.strip()]
+    
+    if not url_list:
+        return templates.TemplateResponse(
+            "scrape_works.html",
+            {
+                "request": request,
+                "error": "No URLs provided",
+            },
+        )
+    
+    try:
+        # Create a scrape job for progress tracking
+        params = {
+            "urls": url_list,
+            "force_rescrape": force_rescrape,
+            "login": login,
+        }
+        job_id = create_job("scrape_works", params)
+        background_tasks.add_task(execute_job, job_id, background_tasks)
+        
+        # Redirect to job detail page
+        return RedirectResponse(url=f"/downloader/job/{job_id}", status_code=303)
+    except Exception as e:
+        return templates.TemplateResponse(
+            "scrape_works.html",
+            {
+                "request": request,
+                "error": f"Error creating scrape job: {str(e)}",
+            },
+        )
 
 
 @router.get("/works/{work_id}", response_class=HTMLResponse)
@@ -359,55 +454,4 @@ async def status_page(request: Request):
 async def health():
     """Health check endpoint."""
     return "OK"
-
-
-@router.get("/works/scrape", response_class=HTMLResponse)
-async def scrape_works_form(request: Request):
-    """Show form for submitting AO3 work URLs to scrape."""
-    return templates.TemplateResponse(
-        "scrape_works.html",
-        {
-            "request": request,
-        },
-    )
-
-
-@router.post("/works/scrape", response_class=HTMLResponse)
-async def scrape_works_submit(
-    request: Request,
-    urls: str = Form(...),
-    force_rescrape: bool = Form(False),
-):
-    """Process URL submission and scrape metadata."""
-    # Parse URLs (one per line)
-    url_list = [url.strip() for url in urls.split("\n") if url.strip()]
-    
-    if not url_list:
-        return templates.TemplateResponse(
-            "scrape_works.html",
-            {
-                "request": request,
-                "error": "No URLs provided",
-            },
-        )
-    
-    try:
-        stats = scrape_and_store_works(url_list, force_rescrape=force_rescrape)
-        
-        return templates.TemplateResponse(
-            "scrape_works.html",
-            {
-                "request": request,
-                "success": True,
-                "stats": stats,
-            },
-        )
-    except Exception as e:
-        return templates.TemplateResponse(
-            "scrape_works.html",
-            {
-                "request": request,
-                "error": f"Error during scraping: {str(e)}",
-            },
-        )
 

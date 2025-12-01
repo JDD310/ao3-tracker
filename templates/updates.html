@@ -5,6 +5,14 @@
 {% block content %}
 <h1>Recent Updates</h1>
 
+{% if last_ingestion_time %}
+<div style="margin-bottom: 15px; padding: 10px; background-color: #e7f3ff; border-left: 4px solid #007bff; border-radius: 4px;">
+    <strong>Last IMAP Ingestion:</strong> 
+    <span id="last-ingestion-time">{{ last_ingestion_time }}</span>
+    <span style="color: #6c757d; font-size: 0.9em;">(runs automatically every 15 minutes)</span>
+</div>
+{% endif %}
+
 <!-- Filters -->
 <form method="get" action="/" style="margin-bottom: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 6px;">
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; align-items: end;">
@@ -87,5 +95,26 @@
 {% else %}
 <p>No updates found. {% if author or date_from or date_to or unread_only %}<a href="/">Clear filters</a>{% else %}Run the ingestion script to populate the database.{% endif %}</p>
 {% endif %}
+
+<script>
+    // Format last ingestion time
+    const lastIngestionEl = document.getElementById('last-ingestion-time');
+    if (lastIngestionEl) {
+        const dateStr = lastIngestionEl.textContent;
+        try {
+            const date = new Date(dateStr);
+            lastIngestionEl.textContent = date.toLocaleString('en-US', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        } catch (e) {
+            // Keep original if parsing fails
+        }
+    }
+</script>
 {% endblock %}
 

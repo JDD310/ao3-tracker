@@ -9,6 +9,8 @@ from fastapi import APIRouter, BackgroundTasks, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+# Try to import downloader modules, but don't fail if they're not available
+DOWNLOADER_AVAILABLE = False
 try:
     from ao3tracker.downloader_config import get_all_settings, get_download_folder
     from ao3tracker.downloader_service import create_job, execute_job, get_job, list_jobs
@@ -17,6 +19,7 @@ except Exception as e:
     # If downloader modules fail to import, create stub functions
     DOWNLOADER_AVAILABLE = False
     import traceback
+    print(f"Warning: Downloader modules not available: {e}")
     traceback.print_exc()
     
     def get_all_settings():
