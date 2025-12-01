@@ -67,11 +67,12 @@
                 {% endif %}
             </td>
             <td>
-                {% if work.last_seen_chapter %}
+                {% if work.display_update_date %}
+                    <span class="update-date">{{ work.display_update_date }}</span>
+                {% elif work.last_seen_chapter %}
                     {{ work.last_seen_chapter }}
-                {% endif %}
-                {% if work.last_update_at %}
-                    ({{ work.last_update_at }})
+                {% else %}
+                    N/A
                 {% endif %}
             </td>
             <td>
@@ -113,6 +114,21 @@
 <script>
     // Format next release dates
     document.querySelectorAll('.next-release-date').forEach(el => {
+        const dateStr = el.textContent;
+        try {
+            const date = new Date(dateStr);
+            el.textContent = date.toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
+            });
+        } catch (e) {
+            // Keep original if parsing fails
+        }
+    });
+    
+    // Format update dates
+    document.querySelectorAll('.update-date').forEach(el => {
         const dateStr = el.textContent;
         try {
             const date = new Date(dateStr);

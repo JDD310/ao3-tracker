@@ -158,6 +158,10 @@ async def list_works(
             w.url,
             w.last_update_at,
             w.total_word_count,
+            w.updated_at,
+            w.published_at,
+            w.chapters_current,
+            w.chapters_max,
             (SELECT u.chapter_label 
              FROM updates u 
              WHERE u.work_id = w.id 
@@ -169,7 +173,7 @@ async def list_works(
     rows = cur.execute(query, params).fetchall()
     all_works = [dict(row) for row in rows]
     
-    # Calculate next_expected_release for each work
+    # Calculate next_expected_release and determine display update date for each work
     for work in all_works:
         work_id = work["id"]
         # Get updates for this work
@@ -185,13 +189,33 @@ async def list_works(
         # Calculate statistics including next_expected_release
         stats = calculate_work_statistics(updates, work)
         work["next_expected_release"] = stats.get("next_expected_release")
+        
+        # Determine display update date: use published_at for 1/1 or 1/? stories, otherwise updated_at
+        chapters_current = work.get("chapters_current")
+        chapters_max = work.get("chapters_max")
+        
+        # Edge case: 1/1 or 1/? chapter stories should use publish date
+        if chapters_current == 1 and (chapters_max == 1 or chapters_max is None):
+            work["display_update_date"] = work.get("published_at")
+        else:
+            # Use updated_at (last time work was actually updated on AO3)
+            work["display_update_date"] = work.get("updated_at")
     
     # Sort works based on sort parameter
     if sort == "word_count":
         all_works.sort(key=lambda x: (x.get("total_word_count") is None, x.get("total_word_count") or 0), reverse=True)
     elif sort == "next_release":
-        # Sort by next_expected_release (None values go to end)
-        all_works.sort(key=lambda x: (x.get("next_expected_release") is None, x.get("next_expected_release") or ""))
+        # Sort by next_expected_release descending (soonest dates first, None values go to end)
+        # Use a tuple where first element ensures None goes to end, second element sorts dates ascending (soonest first)
+        # But we reverse the whole thing so None stays at end but dates are in descending order
+        # Actually, for "most to least recent" we want soonest first, which is ascending for dates
+        # So we sort ascending but put None at the end by making None sort last
+        def sort_key(x):
+            release = x.get("next_expected_release")
+            if release is None:
+                return (1, "")  # None values sort to end
+            return (0, release)  # Non-None values sort by date (ascending = soonest first)
+        all_works.sort(key=sort_key)
     else:  # Default: sort by title
         all_works.sort(key=lambda x: (x.get("title") or "").lower())
     
