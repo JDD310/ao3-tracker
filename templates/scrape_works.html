@@ -62,11 +62,26 @@
     
     <div style="margin-bottom: 15px;">
         <label>
-            <input type="checkbox" name="login" value="true">
+            <input type="checkbox" name="login" id="login-scrape" value="true" onchange="toggleLoginFields('scrape')">
             Login to AO3 (required for locked works)
         </label>
+    </div>
+    
+    <div id="login-fields-scrape" style="display: none; margin-bottom: 15px;">
+        <div style="margin-bottom: 10px;">
+            <label for="username-scrape" style="display: block; margin-bottom: 5px; font-weight: bold;">
+                AO3 Username:
+            </label>
+            <input type="text" id="username-scrape" name="username" style="width: 100%; max-width: 400px; padding: 8px;" placeholder="Your AO3 username">
+        </div>
+        <div style="margin-bottom: 10px;">
+            <label for="password-scrape" style="display: block; margin-bottom: 5px; font-weight: bold;">
+                AO3 Password:
+            </label>
+            <input type="password" id="password-scrape" name="password" style="width: 100%; max-width: 400px; padding: 8px;" placeholder="Your AO3 password">
+        </div>
         <p style="font-size: 0.9em; color: #666; margin-top: 5px;">
-            Uses credentials from downloader settings. Make sure username and password are configured.
+            Password is encrypted in memory and never stored. It will be cleared after login.
         </p>
     </div>
     
@@ -76,6 +91,23 @@
     </div>
 </form>
 
+<script>
+function toggleLoginFields(formId) {
+    const checkbox = document.getElementById('login-' + formId);
+    const fields = document.getElementById('login-fields-' + formId);
+    if (checkbox.checked) {
+        fields.style.display = 'block';
+    } else {
+        fields.style.display = 'none';
+        // Clear password field when hiding
+        const passwordField = document.getElementById('password-' + formId);
+        if (passwordField) {
+            passwordField.value = '';
+        }
+    }
+}
+</script>
+
 <div style="margin-top: 30px; padding: 15px; background-color: #f8f9fa; border-radius: 6px;">
     <h3>Instructions</h3>
     <ul>
@@ -83,7 +115,7 @@
         <li>URLs can be in any format (full URL, short URL, etc.)</li>
         <li>The system will normalize URLs and extract work IDs automatically</li>
         <li>If a work already exists, it will be skipped unless "Force rescrape" is checked</li>
-        <li>Locked works require login - enable "Login to AO3" and configure credentials in downloader settings</li>
+        <li>Locked works require login - enable "Login to AO3" and provide your username and password</li>
         <li>Deleted works will show an error message</li>
     </ul>
 </div>

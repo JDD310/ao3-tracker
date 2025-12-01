@@ -11,21 +11,24 @@ from ao3tracker.db import get_connection
 
 
 # Default settings
+# Note: password is NOT stored in database - it must be provided at runtime
 DEFAULT_SETTINGS = {
     "download_folder": str(Path.cwd() / "downloads"),
     "file_types": ["EPUB"],  # Default to EPUB
     "username": "",
-    "password": "",  # Should be encrypted in production
     "pinboard_api_token": "",
     "debug_logging": False,
     "extra_wait_time": 0,
     "max_retries": 0,
-    "save_password": False,
 }
 
 
 def get_setting(key: str, default: Any = None) -> Any:
     """Get a setting value from database, or return default."""
+    # Never return password from database
+    if key == "password":
+        return default
+    
     conn = get_connection()
     cur = conn.cursor()
     
@@ -53,12 +56,15 @@ def get_setting(key: str, default: Any = None) -> Any:
 
 def set_setting(key: str, value: Any) -> None:
     """Set a setting value in database."""
+    # Prevent password from being stored
+    if key == "password":
+        raise ValueError("Password cannot be stored in database. Passwords must be provided at runtime.")
+    
     conn = get_connection()
     cur = conn.cursor()
     
-    # Special handling: if save_password is being set to False, delete password
-    if key == "save_password" and value is False:
-        cur.execute("DELETE FROM download_settings WHERE setting_key = ?", ("password",))
+    # Delete any existing password (cleanup for migration)
+    cur.execute("DELETE FROM download_settings WHERE setting_key = ?", ("password",))
     
     # Convert value to JSON string if it's not a string
     if isinstance(value, (list, dict, bool)):
@@ -90,6 +96,10 @@ def get_all_settings() -> Dict[str, Any]:
     settings = DEFAULT_SETTINGS.copy()
     for row in rows:
         key = row["setting_key"]
+        # Skip password - it should never be returned
+        if key == "password":
+            continue
+        
         value = row["setting_value"]
         
         if value is not None:

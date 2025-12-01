@@ -158,16 +158,17 @@ def fetch_work_metadata_via_ao3_downloader(
                 from ao3tracker.downloader_config import get_setting
                 if not username:
                     username = get_setting("username", "")
-                if not password:
-                    password = get_setting("password", "")
+                if not username or not password:
+                    raise ValueError("Login requested but username and password are required. Please provide them in the request.")
                 
-                if username and password:
-                    try:
-                        repo.login(username, password)
-                    except Exception as e:
-                        raise ValueError(f"Login failed: {str(e)}")
-                else:
-                    raise ValueError("Login requested but no credentials provided. Please set username and password in downloader settings.")
+                try:
+                    repo.login(username, password)
+                except Exception as e:
+                    raise ValueError(f"Login failed: {str(e)}")
+                finally:
+                    # Clear password from memory
+                    if password:
+                        password = None
             
             # Fetch the work page
             soup = repo.get_soup(normalized_url)

@@ -20,6 +20,8 @@ def scrape_and_store_works(
     urls: Iterable[str],
     force_rescrape: bool = False,
     login: bool = False,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
     progress_callback: Optional[Callable[[str], None]] = None,
 ) -> Dict[str, Any]:
     """
@@ -60,30 +62,35 @@ def scrape_and_store_works(
         repo = Repository(fileops)
         repo.__enter__()  # Manually enter context manager
         
-        username = get_setting("username", "")
-        password = get_setting("password", "")
+        # Get username from settings if not provided
+        if not username:
+            username = get_setting("username", "")
         
-        if username and password:
-            try:
-                if progress_callback:
-                    progress_callback("Logging in to AO3...")
-                repo.login(username, password)
-                if progress_callback:
-                    progress_callback("✓ Logged in successfully")
-            except Exception as e:
-                if repo:
-                    try:
-                        repo.__exit__(None, None, None)
-                    except:
-                        pass
-                raise ValueError(f"Login failed: {str(e)}")
-        else:
+        if not username or not password:
             if repo:
                 try:
                     repo.__exit__(None, None, None)
                 except:
                     pass
-            raise ValueError("Login requested but no credentials provided. Please set username and password in downloader settings.")
+            raise ValueError("Login requested but username and password are required. Please provide them in the request.")
+        
+        try:
+            if progress_callback:
+                progress_callback("Logging in to AO3...")
+            repo.login(username, password)
+            if progress_callback:
+                progress_callback("✓ Logged in successfully")
+        except Exception as e:
+            if repo:
+                try:
+                    repo.__exit__(None, None, None)
+                except:
+                    pass
+            raise ValueError(f"Login failed: {str(e)}")
+        finally:
+            # Clear password from memory
+            if password:
+                password = None
     
     stats = {
         "processed": 0,
@@ -127,7 +134,7 @@ def scrape_and_store_works(
                     progress_callback(f"[{idx}/{total_urls}] Fetching metadata for work {work_id}...")
                 
                 # Pass the repo instance to reuse the same session (much faster!)
-                metadata = fetch_work_metadata_via_ao3_downloader(normalized_url, login=login, repo=repo)
+                metadata = fetch_work_metadata_via_ao3_downloader(normalized_url, login=login, username=username, password=password, repo=repo)
                 
                 # Store in database
                 was_existing = existing is not None

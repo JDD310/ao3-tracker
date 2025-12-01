@@ -54,23 +54,11 @@ This project uses and integrates with several open-source libraries and tools. T
 - **PyPI**: https://pypi.org/project/lxml/
 - **Usage**: XML and HTML parser backend for BeautifulSoup
 
-### Google API Python Client
-- **License**: Apache License 2.0
-- **Source**: https://github.com/googleapis/google-api-python-client
-- **PyPI**: https://pypi.org/project/google-api-python-client/
-- **Usage**: Gmail API integration for fetching subscription emails
-
-### google-auth-httplib2
-- **License**: Apache License 2.0
-- **Source**: https://github.com/googleapis/google-auth-library-python-httplib2
-- **PyPI**: https://pypi.org/project/google-auth-httplib2/
-- **Usage**: Authentication transport for Google API client
-
-### google-auth-oauthlib
-- **License**: Apache License 2.0
-- **Source**: https://github.com/googleapis/google-auth-library-python-oauthlib
-- **PyPI**: https://pypi.org/project/google-auth-oauthlib/
-- **Usage**: OAuth 2.0 client library for Google API authentication
+### cryptography
+- **License**: Apache License 2.0 and BSD License (dual-licensed)
+- **Source**: https://github.com/pyca/cryptography
+- **PyPI**: https://pypi.org/project/cryptography/
+- **Usage**: Password encryption for secure handling of AO3 login credentials in memory
 
 ## Indirect Dependencies
 
@@ -87,9 +75,9 @@ The following libraries are dependencies of the packages listed above:
 - **rsa**: RSA encryption library
 - **cachetools**: Caching utilities
 - **pyasn1-modules**: ASN.1 modules
-- **httplib2**: HTTP client library
 - **requests**: HTTP library
-- **requests-oauthlib**: OAuth library for requests
+- **cffi**: C Foreign Function Interface (dependency of cryptography)
+- **pycparser**: C parser (dependency of cffi/cryptography)
 
 ## License Compatibility
 

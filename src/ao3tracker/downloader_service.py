@@ -231,6 +231,14 @@ async def execute_job(job_id: int, background_tasks: BackgroundTasks) -> None:
         if job_type == "download_from_ao3_link":
             if not params.get("link"):
                 raise ValueError("Link parameter is required")
+            # Decrypt password if present
+            password = params.get("password")
+            if password:
+                from ao3tracker.password_utils import decrypt_password
+                try:
+                    password = decrypt_password(password)
+                except Exception:
+                    password = None  # If decryption fails, treat as no password
             result = await download_from_ao3_link(
                 link=params["link"],
                 file_types=params.get("file_types", ["EPUB"]),
@@ -238,32 +246,63 @@ async def execute_job(job_id: int, background_tasks: BackgroundTasks) -> None:
                 include_series=params.get("include_series", False),
                 download_images=params.get("download_images", False),
                 login=params.get("login", False),
+                username=params.get("username"),
+                password=password,
                 progress_callback=progress_callback,
             )
+            # Clear password from memory
+            if password:
+                password = None
         
         elif job_type == "get_links_only":
             if not params.get("link"):
                 raise ValueError("Link parameter is required")
+            # Decrypt password if present
+            password = params.get("password")
+            if password:
+                from ao3tracker.password_utils import decrypt_password
+                try:
+                    password = decrypt_password(password)
+                except Exception:
+                    password = None
             result = await get_links_only(
                 link=params["link"],
                 pages=params.get("pages"),
                 include_series=params.get("include_series", False),
                 include_metadata=params.get("include_metadata", False),
                 login=params.get("login", False),
+                username=params.get("username"),
+                password=password,
                 progress_callback=progress_callback,
             )
+            # Clear password from memory
+            if password:
+                password = None
         
         elif job_type == "download_from_file":
             if not params.get("file_content"):
                 raise ValueError("File content parameter is required")
+            # Decrypt password if present
+            password = params.get("password")
+            if password:
+                from ao3tracker.password_utils import decrypt_password
+                try:
+                    password = decrypt_password(password)
+                except Exception:
+                    password = None
             result = await download_from_file(
                 file_content=params["file_content"],
                 file_types=params.get("file_types", ["EPUB"]),
                 include_series=params.get("include_series", True),
                 download_images=params.get("download_images", False),
                 login=params.get("login", False),
+                username=params.get("username"),
+                password=password,
                 progress_callback=progress_callback,
             )
+            # Clear password from memory
+            if password:
+                password = None
         
         elif job_type == "update_incomplete_fics":
             result = await update_incomplete_fics(
@@ -288,11 +327,24 @@ async def execute_job(job_id: int, background_tasks: BackgroundTasks) -> None:
             )
         
         elif job_type == "download_marked_for_later":
+            # Decrypt password if present
+            password = params.get("password")
+            if password:
+                from ao3tracker.password_utils import decrypt_password
+                try:
+                    password = decrypt_password(password)
+                except Exception:
+                    password = None
             result = await download_marked_for_later(
                 login=params.get("login", True),
                 mark_as_read=params.get("mark_as_read", True),
+                username=params.get("username"),
+                password=password,
                 progress_callback=progress_callback,
             )
+            # Clear password from memory
+            if password:
+                password = None
         
         elif job_type == "download_pinboard_bookmarks":
             if not params.get("api_token"):
@@ -325,14 +377,29 @@ async def execute_job(job_id: int, background_tasks: BackgroundTasks) -> None:
             if not params.get("urls"):
                 raise ValueError("URLs parameter is required")
             
+            # Decrypt password if present
+            password = params.get("password")
+            if password:
+                from ao3tracker.password_utils import decrypt_password
+                try:
+                    password = decrypt_password(password)
+                except Exception:
+                    password = None
+            
             # Run scraping in thread pool with progress callback
             def _scrape():
                 return scrape_and_store_works(
                     urls=params["urls"],
                     force_rescrape=params.get("force_rescrape", False),
                     login=params.get("login", False),
+                    username=params.get("username"),
+                    password=password,
                     progress_callback=lambda msg: progress_callback.update(msg),
                 )
+            
+            # Clear password after use
+            if password:
+                password = None
             
             stats = await asyncio.to_thread(_scrape)
             result = {

@@ -115,6 +115,8 @@ async def submit_download_from_link(
     include_series: bool = Form(False),
     download_images: bool = Form(False),
     login: bool = Form(False),
+    username: Optional[str] = Form(None),
+    password: Optional[str] = Form(None),
 ):
     """Submit download from link job."""
     # Get file types from form (can be multiple)
@@ -134,6 +136,15 @@ async def submit_download_from_link(
         "login": login,
     }
     
+    # Only include credentials if login is enabled
+    if login:
+        if username:
+            params["username"] = username
+        if password:
+            # Encrypt password before storing in job parameters
+            from ao3tracker.password_utils import encrypt_password
+            params["password"] = encrypt_password(password)
+    
     job_id = create_job("download_from_ao3_link", params)
     background_tasks.add_task(execute_job, job_id, background_tasks)
     
@@ -149,6 +160,8 @@ async def submit_get_links(
     include_series: bool = Form(False),
     include_metadata: bool = Form(False),
     login: bool = Form(False),
+    username: Optional[str] = Form(None),
+    password: Optional[str] = Form(None),
 ):
     """Submit get links job."""
     pages_int = int(pages) if pages and pages.isdigit() else None
@@ -160,6 +173,15 @@ async def submit_get_links(
         "include_metadata": include_metadata,
         "login": login,
     }
+    
+    # Only include credentials if login is enabled
+    if login:
+        if username:
+            params["username"] = username
+        if password:
+            # Encrypt password before storing in job parameters
+            from ao3tracker.password_utils import encrypt_password
+            params["password"] = encrypt_password(password)
     
     job_id = create_job("get_links_only", params)
     background_tasks.add_task(execute_job, job_id, background_tasks)
@@ -175,6 +197,8 @@ async def submit_download_from_file(
     include_series: bool = Form(True),
     download_images: bool = Form(False),
     login: bool = Form(False),
+    username: Optional[str] = Form(None),
+    password: Optional[str] = Form(None),
 ):
     """Submit download from file job."""
     # Get file types from form (can be multiple)
@@ -190,6 +214,15 @@ async def submit_download_from_file(
         "download_images": download_images,
         "login": login,
     }
+    
+    # Only include credentials if login is enabled
+    if login:
+        if username:
+            params["username"] = username
+        if password:
+            # Encrypt password before storing in job parameters
+            from ao3tracker.password_utils import encrypt_password
+            params["password"] = encrypt_password(password)
     
     job_id = create_job("download_from_file", params)
     background_tasks.add_task(execute_job, job_id, background_tasks)

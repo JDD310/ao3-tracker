@@ -262,6 +262,8 @@ async def scrape_works_submit(
     urls: str = Form(...),
     force_rescrape: bool = Form(False),
     login: bool = Form(False),
+    username: Optional[str] = Form(None),
+    password: Optional[str] = Form(None),
 ):
     """Process URL submission and scrape metadata."""
     from ao3tracker.downloader_service import create_job, execute_job
@@ -285,6 +287,16 @@ async def scrape_works_submit(
             "force_rescrape": force_rescrape,
             "login": login,
         }
+        
+        # Only include credentials if login is enabled
+        if login:
+            if username:
+                params["username"] = username
+            if password:
+                # Encrypt password before storing in job parameters
+                from ao3tracker.password_utils import encrypt_password
+                params["password"] = encrypt_password(password)
+        
         job_id = create_job("scrape_works", params)
         background_tasks.add_task(execute_job, job_id, background_tasks)
         

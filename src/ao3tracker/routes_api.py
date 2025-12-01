@@ -244,6 +244,9 @@ class ScrapeRequest(BaseModel):
     """Request model for scraping works from URLs."""
     urls: list[str]
     force_rescrape: bool = False
+    login: bool = False
+    username: Optional[str] = None
+    password: Optional[str] = None  # Required if login=True, encrypted in memory
 
 
 @router.post("/works/scrape-from-urls")
@@ -262,7 +265,21 @@ async def api_scrape_works_from_urls(request: ScrapeRequest):
         raise HTTPException(status_code=400, detail="At least one URL is required")
     
     try:
-        stats = scrape_and_store_works(request.urls, force_rescrape=request.force_rescrape)
+        # Password should be provided in plaintext from API, but we encrypt it if needed
+        # For API, we expect plaintext password and use it directly
+        password = request.password
+        
+        stats = scrape_and_store_works(
+            request.urls,
+            force_rescrape=request.force_rescrape,
+            login=request.login,
+            username=request.username,
+            password=password,
+        )
+        
+        # Clear password from memory
+        if password:
+            password = None
         
         return {
             "status": "success",

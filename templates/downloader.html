@@ -81,8 +81,15 @@
                     <div class="checkbox-group">
                         <label class="checkbox-label"><input type="checkbox" name="include_series"> Include series</label>
                         <label class="checkbox-label"><input type="checkbox" name="download_images"> Download images</label>
-                        <label class="checkbox-label"><input type="checkbox" name="login"> Login to AO3</label>
+                        <label class="checkbox-label"><input type="checkbox" name="login" id="login1" onchange="toggleLoginFields('1')"> Login to AO3</label>
                     </div>
+                </div>
+                <div class="form-group" id="login-fields-1" style="display: none;">
+                    <label for="username1">AO3 Username:</label>
+                    <input type="text" id="username1" name="username" class="form-input" placeholder="Your AO3 username">
+                    <label for="password1">AO3 Password:</label>
+                    <input type="password" id="password1" name="password" class="form-input" placeholder="Your AO3 password">
+                    <small class="form-help">Password is encrypted in memory and never stored. It will be cleared after login.</small>
                 </div>
                 <button type="submit" class="btn btn-primary">
                     Start Download
@@ -109,8 +116,15 @@
                     <div class="checkbox-group">
                         <label class="checkbox-label"><input type="checkbox" name="include_series"> Include series</label>
                         <label class="checkbox-label"><input type="checkbox" name="include_metadata"> Include metadata (CSV format)</label>
-                        <label class="checkbox-label"><input type="checkbox" name="login"> Login to AO3</label>
+                        <label class="checkbox-label"><input type="checkbox" name="login" id="login2" onchange="toggleLoginFields('2')"> Login to AO3</label>
                     </div>
+                </div>
+                <div class="form-group" id="login-fields-2" style="display: none;">
+                    <label for="username2">AO3 Username:</label>
+                    <input type="text" id="username2" name="username" class="form-input" placeholder="Your AO3 username">
+                    <label for="password2">AO3 Password:</label>
+                    <input type="password" id="password2" name="password" class="form-input" placeholder="Your AO3 password">
+                    <small class="form-help">Password is encrypted in memory and never stored. It will be cleared after login.</small>
                 </div>
                 <button type="submit" class="btn btn-success">
                     Get Links
@@ -143,8 +157,15 @@
                     <div class="checkbox-group">
                         <label class="checkbox-label"><input type="checkbox" name="include_series" checked> Include series</label>
                         <label class="checkbox-label"><input type="checkbox" name="download_images"> Download images</label>
-                        <label class="checkbox-label"><input type="checkbox" name="login"> Login to AO3</label>
+                        <label class="checkbox-label"><input type="checkbox" name="login" id="login3" onchange="toggleLoginFields('3')"> Login to AO3</label>
                     </div>
+                </div>
+                <div class="form-group" id="login-fields-3" style="display: none;">
+                    <label for="username3">AO3 Username:</label>
+                    <input type="text" id="username3" name="username" class="form-input" placeholder="Your AO3 username">
+                    <label for="password3">AO3 Password:</label>
+                    <input type="password" id="password3" name="password" class="form-input" placeholder="Your AO3 password">
+                    <small class="form-help">Password is encrypted in memory and never stored. It will be cleared after login.</small>
                 </div>
                 <button type="submit" class="btn btn-info">
                     Start Download
@@ -162,6 +183,23 @@
     </div>
 
 </div>
+
+<script>
+function toggleLoginFields(formNum) {
+    const checkbox = document.getElementById('login' + formNum);
+    const fields = document.getElementById('login-fields-' + formNum);
+    if (checkbox.checked) {
+        fields.style.display = 'block';
+    } else {
+        fields.style.display = 'none';
+        // Clear password field when hiding
+        const passwordField = document.getElementById('password' + formNum);
+        if (passwordField) {
+            passwordField.value = '';
+        }
+    }
+}
+</script>
 
 {% endblock %}
 

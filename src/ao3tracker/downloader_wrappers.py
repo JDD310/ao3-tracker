@@ -98,6 +98,8 @@ async def download_from_ao3_link(
     include_series: bool = False,
     download_images: bool = False,
     login: bool = False,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
     progress_callback: Optional[ProgressCallback] = None,
 ) -> Dict[str, Any]:
     """
@@ -122,17 +124,23 @@ async def download_from_ao3_link(
         fileops = create_fileops_with_settings()
         with Repository(fileops) as repo:
             if login:
-                username = get_setting("username", "")
-                password = get_setting("password", "")
-                if username and password:
-                    try:
-                        repo.login(username, password)
-                        if progress_callback:
-                            progress_callback.update("Logged in successfully")
-                    except Exception as e:
-                        if progress_callback:
-                            progress_callback.update(f"Login failed: {str(e)}")
-                        raise
+                # Get username from settings if not provided
+                if not username:
+                    username = get_setting("username", "")
+                if not username or not password:
+                    raise ValueError("Login requested but username and password are required. Please provide them in the request.")
+                try:
+                    repo.login(username, password)
+                    if progress_callback:
+                        progress_callback.update("Logged in successfully")
+                except Exception as e:
+                    if progress_callback:
+                        progress_callback.update(f"Login failed: {str(e)}")
+                    raise
+                finally:
+                    # Clear password from memory
+                    if password:
+                        password = None
             
             # Build visited list from log files and ignore list
             visited = []
@@ -262,6 +270,8 @@ async def get_links_only(
     include_series: bool = False,
     include_metadata: bool = False,
     login: bool = False,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
     progress_callback: Optional[ProgressCallback] = None,
 ) -> Dict[str, Any]:
     """
@@ -309,17 +319,23 @@ async def get_links_only(
             # It will wait as long as needed when rate limited - no action needed from us
             
             if login:
-                username = get_setting("username", "")
-                password = get_setting("password", "")
-                if username and password:
-                    try:
-                        repo.login(username, password)
-                        if progress_callback:
-                            progress_callback.update("Logged in successfully")
-                    except Exception as e:
-                        if progress_callback:
-                            progress_callback.update(f"Login failed: {str(e)}")
-                        raise
+                # Get username from settings if not provided
+                if not username:
+                    username = get_setting("username", "")
+                if not username or not password:
+                    raise ValueError("Login requested but username and password are required. Please provide them in the request.")
+                try:
+                    repo.login(username, password)
+                    if progress_callback:
+                        progress_callback.update("Logged in successfully")
+                except Exception as e:
+                    if progress_callback:
+                        progress_callback.update(f"Login failed: {str(e)}")
+                    raise
+                finally:
+                    # Clear password from memory
+                    if password:
+                        password = None
             
             if progress_callback:
                 progress_callback.update(f"Fetching links from {link}...")
@@ -396,6 +412,8 @@ async def download_from_file(
     include_series: bool = True,
     download_images: bool = False,
     login: bool = False,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
     progress_callback: Optional[ProgressCallback] = None,
 ) -> Dict[str, Any]:
     """
@@ -419,17 +437,23 @@ async def download_from_file(
         fileops = create_fileops_with_settings()
         with Repository(fileops) as repo:
             if login:
-                username = get_setting("username", "")
-                password = get_setting("password", "")
-                if username and password:
-                    try:
-                        repo.login(username, password)
-                        if progress_callback:
-                            progress_callback.update("Logged in successfully")
-                    except Exception as e:
-                        if progress_callback:
-                            progress_callback.update(f"Login failed: {str(e)}")
-                        raise
+                # Get username from settings if not provided
+                if not username:
+                    username = get_setting("username", "")
+                if not username or not password:
+                    raise ValueError("Login requested but username and password are required. Please provide them in the request.")
+                try:
+                    repo.login(username, password)
+                    if progress_callback:
+                        progress_callback.update("Logged in successfully")
+                except Exception as e:
+                    if progress_callback:
+                        progress_callback.update(f"Login failed: {str(e)}")
+                    raise
+                finally:
+                    # Clear password from memory
+                    if password:
+                        password = None
             
             # Build visited list from log files and ignore list
             visited = []
@@ -606,6 +630,8 @@ async def redownload_in_different_format(
 async def download_marked_for_later(
     login: bool = True,
     mark_as_read: bool = True,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
     progress_callback: Optional[ProgressCallback] = None,
 ) -> Dict[str, Any]:
     """
@@ -622,13 +648,14 @@ async def download_marked_for_later(
     def _download():
         fileops = create_fileops_with_settings()
         with Repository(fileops) as repo:
-            username = get_setting("username", "")
-            password = get_setting("password", "")
+            # Get username from settings if not provided
+            if not username:
+                username = get_setting("username", "")
             
             if not username or not password:
                 return {
                     "success": False,
-                    "error": "Login credentials required",
+                    "error": "Login credentials required. Please provide username and password.",
                 }
             
             try:
@@ -640,6 +667,10 @@ async def download_marked_for_later(
                     "success": False,
                     "error": f"Login failed: {str(e)}",
                 }
+            finally:
+                # Clear password from memory
+                if password:
+                    password = None
             
             # Placeholder - would need to adapt markedforlater.action()
             return {

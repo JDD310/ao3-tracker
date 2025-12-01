@@ -1,6 +1,3 @@
-google-api-python-client
-google-auth-httplib2
-google-auth-oauthlib
 beautifulsoup4
 lxml
 fastapi
@@ -8,5 +5,6 @@ uvicorn[standard]
 jinja2
 pydantic
 python-multipart
+cryptography
 # ao3downloader - using local repo (added to sys.path in code)
 # Note: PyPI package requires Python <3.13, but local repo works with any version

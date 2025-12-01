@@ -1,11 +1,11 @@
 # AO3 Subscription Tracker
 
-A self-hosted web application for tracking and managing your Archive of Our Own (AO3) subscription updates. This tool parses AO3 subscription emails from Gmail/IMAP, stores update information in a local database, and provides a beautiful web interface to browse your tracked works, view update history, and monitor statistics.
+A self-hosted web application for tracking and managing your Archive of Our Own (AO3) subscription updates. This tool parses AO3 subscription emails via IMAP, stores update information in a local database, and provides a beautiful web interface to browse your tracked works, view update history, and monitor statistics.
 
 ## Features
 
 ### Core Functionality
-- **Email Ingestion**: Automatically parses AO3 subscription emails from Gmail (via Gmail API) or IMAP
+- **Email Ingestion**: Automatically parses AO3 subscription emails via IMAP
 - **Update Tracking**: Stores all update information including chapter labels, word counts, and timestamps
 - **Work Management**: Tracks works with metadata including title, author, fandoms, ratings, and more
 - **Update History**: View complete update history for each work with detailed statistics
@@ -47,8 +47,7 @@ A self-hosted web application for tracking and managing your Archive of Our Own 
 ### Prerequisites
 - Python 3.10 or higher
 - Git (for automatic ao3downloader installation)
-- Gmail account with AO3 subscription emails, or IMAP access to your email
-- (Optional) Google API credentials for Gmail API access
+- Email account with AO3 subscription emails and IMAP access
 
 ### ao3downloader Setup
 The application requires `ao3downloader` to be present in the project root directory. The application will automatically clone it from GitHub if it's not found.
@@ -90,14 +89,16 @@ git clone https://github.com/nianeyna/ao3downloader.git
    pip install -r requirements.txt
    ```
 
-4. **Set up Gmail API (Optional - for Gmail access)**
-   - Follow the [Gmail API Python Quickstart](https://developers.google.com/gmail/api/quickstart/python)
-   - Place `credentials.json` in the project root
-   - Run the application once to generate `token.json` through OAuth flow
-
-5. **Set up IMAP (Alternative to Gmail API)**
-   - Configure IMAP credentials in your environment or configuration
+4. **Set up IMAP**
+   - Configure IMAP credentials in your environment variables:
+     - `AO3TRACKER_EMAIL`: Your email address
+     - `AO3TRACKER_IMAP_PASSWORD`: Your IMAP password (or app-specific password)
    - The application supports standard IMAP email access
+
+5. **Set up password encryption (optional, recommended for production)**
+   - For production deployments, set the `AO3TRACKER_ENCRYPTION_KEY` environment variable with a secure encryption key
+   - If not set, a default key will be used (not secure for production)
+   - Generate a secure key: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
 
 6. **Initialize the database**
    - The database will be automatically created on first run
@@ -118,8 +119,8 @@ The application will be available at `http://localhost:8000`
 
 To process AO3 subscription emails:
 
-1. **Using Gmail API**: The application will automatically authenticate and fetch emails
-2. **Using IMAP**: Configure your IMAP settings and run the ingestion script
+1. **Set up IMAP credentials** in your environment variables (see Setup step 4)
+2. **Run the email ingestion** - the application will connect via IMAP and fetch emails
 
 ### Web Interface
 
@@ -169,6 +170,8 @@ The application provides a REST API for programmatic access:
 - `GET /api/v1/downloader/settings` - Get downloader settings
 - `POST /api/v1/downloader/settings` - Update downloader settings
 
+**Note**: For endpoints that require login (`login: true`), you must provide `username` and `password` in the request body. Passwords are encrypted in memory and never stored in the database.
+
 See the FastAPI automatic documentation at `http://localhost:8000/docs` for full API details.
 
 ## Project Structure
@@ -209,17 +212,25 @@ ao3-tracker/
 The application uses SQLite by default. The database file (`ao3_tracker.db`) is created automatically in the project root.
 
 ### Email Access
-- **Gmail API**: Requires `credentials.json` and `token.json` files
-- **IMAP**: Configure via environment variables or configuration file
+- **IMAP**: Configure via environment variables:
+  - `AO3TRACKER_EMAIL`: Your email address
+  - `AO3TRACKER_IMAP_PASSWORD`: Your IMAP password
+
+### Password Encryption (Production)
+- **AO3TRACKER_ENCRYPTION_KEY**: (Optional but recommended for production) Set this environment variable with a secure encryption key for password encryption. If not set, a default key is used (not secure for production).
+  - Generate a secure key: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+  - Store this key securely and never commit it to version control
 
 ### Downloader Configuration
 The downloader can be configured through the web interface at `/downloader` or via the API. Settings include:
 - Download folder path
 - Default file types (EPUB, MOBI, PDF, HTML, AZW3)
-- AO3 login credentials (optional, for accessing locked works)
+- AO3 username (optional, for accessing locked works)
 - Pinboard API token (optional, for Pinboard integration)
 - Debug logging
 - Wait times and retry settings
+
+**Important Security Note**: AO3 passwords are **never stored** in the database. When login is required (for locked works), you must provide your password at runtime through the web interface or API. Passwords are encrypted in memory while in use and are immediately cleared after authentication. For production deployments, set the `AO3TRACKER_ENCRYPTION_KEY` environment variable with a secure encryption key.
 
 ## Development
 
@@ -250,7 +261,7 @@ This project integrates with and uses code from several open-source projects. Se
 
 ## Disclaimer
 
-This tool is designed to help you track your AO3 subscriptions through email notifications. It does not scrape AO3 directly and respects AO3's Terms of Service by using only email-based data. The work scraping feature is for metadata only and should be used responsibly.
+This tool is designed to help you track your AO3 subscriptions through email notifications and respects AO3's Terms of Service by using only email-based data. The work scraping feature is for metadata only and should be used responsibly.
 
 The downloader integration uses ao3downloader, which respects AO3's rate limits and terms of service. Downloads are performed with appropriate delays and respect for AO3's infrastructure. Please use responsibly and in accordance with AO3's Terms of Service.
 

@@ -28,6 +28,8 @@ class DownloadFromLinkRequest(BaseModel):
     include_series: bool = False
     download_images: bool = False
     login: bool = False
+    username: Optional[str] = None
+    password: Optional[str] = None  # Required if login=True, encrypted in memory
 
 
 class GetLinksRequest(BaseModel):
@@ -36,6 +38,8 @@ class GetLinksRequest(BaseModel):
     include_series: bool = False
     include_metadata: bool = False
     login: bool = False
+    username: Optional[str] = None
+    password: Optional[str] = None  # Required if login=True, encrypted in memory
 
 
 class DownloadFromFileRequest(BaseModel):
@@ -44,6 +48,8 @@ class DownloadFromFileRequest(BaseModel):
     include_series: bool = True
     download_images: bool = False
     login: bool = False
+    username: Optional[str] = None
+    password: Optional[str] = None  # Required if login=True, encrypted in memory
 
 
 class UpdateIncompleteRequest(BaseModel):
@@ -65,6 +71,8 @@ class RedownloadRequest(BaseModel):
 class MarkedForLaterRequest(BaseModel):
     login: bool = True
     mark_as_read: bool = True
+    username: Optional[str] = None
+    password: Optional[str] = None  # Required if login=True, encrypted in memory
 
 
 class PinboardRequest(BaseModel):
@@ -85,7 +93,12 @@ async def create_download_job(
     background_tasks: BackgroundTasks,
 ):
     """Create a job to download from an AO3 link."""
-    job_id = create_job("download_from_ao3_link", request.model_dump())
+    params = request.model_dump()
+    # Encrypt password if present
+    if params.get("password"):
+        from ao3tracker.password_utils import encrypt_password
+        params["password"] = encrypt_password(params["password"])
+    job_id = create_job("download_from_ao3_link", params)
     background_tasks.add_task(execute_job, job_id, background_tasks)
     return {"job_id": job_id, "status": "pending"}
 
@@ -96,7 +109,12 @@ async def create_get_links_job(
     background_tasks: BackgroundTasks,
 ):
     """Create a job to get links only."""
-    job_id = create_job("get_links_only", request.model_dump())
+    params = request.model_dump()
+    # Encrypt password if present
+    if params.get("password"):
+        from ao3tracker.password_utils import encrypt_password
+        params["password"] = encrypt_password(params["password"])
+    job_id = create_job("get_links_only", params)
     background_tasks.add_task(execute_job, job_id, background_tasks)
     return {"job_id": job_id, "status": "pending"}
 
@@ -107,7 +125,12 @@ async def create_download_from_file_job(
     background_tasks: BackgroundTasks,
 ):
     """Create a job to download from a file."""
-    job_id = create_job("download_from_file", request.model_dump())
+    params = request.model_dump()
+    # Encrypt password if present
+    if params.get("password"):
+        from ao3tracker.password_utils import encrypt_password
+        params["password"] = encrypt_password(params["password"])
+    job_id = create_job("download_from_file", params)
     background_tasks.add_task(execute_job, job_id, background_tasks)
     return {"job_id": job_id, "status": "pending"}
 
@@ -151,7 +174,12 @@ async def create_marked_for_later_job(
     background_tasks: BackgroundTasks,
 ):
     """Create a job to download marked for later list."""
-    job_id = create_job("download_marked_for_later", request.model_dump())
+    params = request.model_dump()
+    # Encrypt password if present
+    if params.get("password"):
+        from ao3tracker.password_utils import encrypt_password
+        params["password"] = encrypt_password(params["password"])
+    job_id = create_job("download_marked_for_later", params)
     background_tasks.add_task(execute_job, job_id, background_tasks)
     return {"job_id": job_id, "status": "pending"}
 
@@ -239,20 +267,13 @@ async def get_settings():
 @router.post("/settings")
 async def update_settings(settings: dict):
     """Update downloader settings."""
-    from ao3tracker.downloader_config import get_setting
+    # Remove password from settings if present - passwords cannot be stored
+    if "password" in settings:
+        del settings["password"]
     
-    # Get current save_password setting (before updating)
-    current_save_password = get_setting("save_password", False)
-    
-    # Update all settings first
+    # Update all settings
     for key, value in settings.items():
         set_setting(key, value)
-    
-    # After updating, check if save_password is False (either was set to False or is currently False)
-    # If save_password is False, delete the password
-    final_save_password = settings.get("save_password", current_save_password)
-    if not final_save_password:
-        set_setting("password", "")
     
     return {"status": "success", "message": "Settings updated"}
 
