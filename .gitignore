@@ -14,3 +14,4 @@ ao3downloader
 AO3DOWNLOADER_INTEGRATION_PLAN.md
 logs/
 *.log
+data.json
