@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}AO3 Tracker – Works{% endblock %}
+
+{% block content %}
+<h1>Works</h1>
+
+<div style="margin-bottom: 15px;">
+    <a href="/works/scrape" style="padding: 8px 16px; background-color: #007bff; color: white; text-decoration: none; border-radius: 4px; display: inline-block;">
+        Scrape Works from URLs
+    </a>
+</div>
+
+<!-- Filters -->
+<form method="get" action="/works" style="margin-bottom: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 6px;">
+    <div style="display: flex; gap: 10px; align-items: end; flex-wrap: wrap;">
+        <div>
+            <label for="author">Author:</label>
+            <input type="text" id="author" name="author" value="{{ author }}" placeholder="Filter by author">
+        </div>
+        <div>
+            <label for="filter">Show:</label>
+            <select id="filter" name="filter">
+                <option value="all" {% if filter == 'all' or not filter %}selected{% endif %}>All Works</option>
+                <option value="updated" {% if filter == 'updated' %}selected{% endif %}>Works with Updates</option>
+            </select>
+        </div>
+        <div>
+            <button type="submit">Filter</button>
+            <a href="/works" style="margin-left: 10px;">Clear</a>
+        </div>
+    </div>
+</form>
+
+{% if works %}
+<p>Showing {{ works|length }} of {{ total }} works (Page {{ page }} of {{ total_pages }})</p>
+
+<table>
+    <thead>
+        <tr>
+            <th>Title</th>
+            <th>Author</th>
+            <th>Last Update</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for work in works %}
+        <tr>
+            <td><a href="/works/{{ work.id }}">{{ work.title }}</a></td>
+            <td>{{ work.author }}</td>
+            <td>
+                {% if work.last_seen_chapter %}
+                    {{ work.last_seen_chapter }}
+                {% endif %}
+                {% if work.last_update_at %}
+                    ({{ work.last_update_at }})
+                {% endif %}
+            </td>
+            <td>
+                {% if work.url %}
+                    <a href="{{ work.url }}" target="_blank">Open on AO3</a>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<div style="margin-top: 20px; text-align: center;">
+    {% if page > 1 %}
+        <a href="?page={{ page - 1 }}&author={{ author }}&filter={{ filter }}">← Previous</a>
+    {% endif %}
+    
+    <span style="margin: 0 20px;">Page {{ page }} of {{ total_pages }}</span>
+    
+    {% if page < total_pages %}
+        <a href="?page={{ page + 1 }}&author={{ author }}&filter={{ filter }}">Next →</a>
+    {% endif %}
+</div>
+{% endif %}
+
+{% else %}
+<p>No works found. {% if author %}<a href="/works">Clear filters</a>{% endif %}</p>
+{% endif %}
+{% endblock %}
+

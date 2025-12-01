@@ -6,3 +6,8 @@ credentials.json
 token.json
 *.db
 projectoutline.txt
+INTEGRATION_PLAN.md
+ds.store
+.DS_Store
+worktrees.json
+ao3downloader

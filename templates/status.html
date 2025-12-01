@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}AO3 Tracker – Status{% endblock %}
+
+{% block content %}
+<h1>System Status</h1>
+
+<div class="stats-grid">
+    <div class="stat-item">
+        <strong>Total Works:</strong> {{ works_count }}
+    </div>
+    <div class="stat-item">
+        <strong>Total Updates:</strong> {{ updates_count }}
+    </div>
+    <div class="stat-item">
+        <strong>Unread Updates:</strong> {{ unread_count }}
+    </div>
+    <div class="stat-item">
+        <strong>Last Update Time:</strong> 
+        {% if last_update_time %}
+            {{ last_update_time }}
+        {% else %}
+            N/A
+        {% endif %}
+    </div>
+    <div class="stat-item">
+        <strong>Last Ingestion Time:</strong>
+        {% if last_ingestion_time %}
+            {{ last_ingestion_time }}
+        {% else %}
+            N/A
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+

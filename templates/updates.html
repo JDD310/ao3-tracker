@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}AO3 Tracker – Recent Updates{% endblock %}
+
+{% block content %}
+<h1>Recent Updates</h1>
+
+<!-- Filters -->
+<form method="get" action="/" style="margin-bottom: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 6px;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; align-items: end;">
+        <div>
+            <label for="author">Author:</label>
+            <input type="text" id="author" name="author" value="{{ author }}" placeholder="Filter by author">
+        </div>
+        <div>
+            <label for="date_from">Date From:</label>
+            <input type="date" id="date_from" name="date_from" value="{{ date_from }}">
+        </div>
+        <div>
+            <label for="date_to">Date To:</label>
+            <input type="date" id="date_to" name="date_to" value="{{ date_to }}">
+        </div>
+        <div>
+            <label>
+                <input type="checkbox" name="unread_only" value="true" {% if unread_only %}checked{% endif %}>
+                Unread only
+            </label>
+        </div>
+        <div>
+            <button type="submit">Filter</button>
+            <a href="/" style="margin-left: 10px;">Clear</a>
+        </div>
+    </div>
+</form>
+
+{% if updates %}
+<p>Showing {{ updates|length }} of {{ total }} updates (Page {{ page }} of {{ total_pages }})</p>
+
+<table>
+    <thead>
+        <tr>
+            <th>Status</th>
+            <th>Work Title</th>
+            <th>Author</th>
+            <th>Chapter</th>
+            <th>Email Subject</th>
+            <th>Email Date</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for update in updates %}
+        <tr {% if not update.is_read %}style="font-weight: bold;"{% endif %}>
+            <td>
+                {% if not update.is_read %}
+                    <span style="color: #007bff;">●</span> Unread
+                {% else %}
+                    <span style="color: #6c757d;">○</span> Read
+                {% endif %}
+            </td>
+            <td><a href="/works/{{ update.work_id }}">{{ update.title }}</a></td>
+            <td>{{ update.author }}</td>
+            <td>{{ update.chapter_label }}</td>
+            <td>{{ update.email_subject }}</td>
+            <td>{{ update.email_date }}</td>
+            <td><a href="{{ update.url }}" target="_blank">Open on AO3</a></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<div style="margin-top: 20px; text-align: center;">
+    {% if page > 1 %}
+        <a href="?page={{ page - 1 }}&author={{ author }}&date_from={{ date_from }}&date_to={{ date_to }}{% if unread_only %}&unread_only=true{% endif %}">← Previous</a>
+    {% endif %}
+    
+    <span style="margin: 0 20px;">Page {{ page }} of {{ total_pages }}</span>
+    
+    {% if page < total_pages %}
+        <a href="?page={{ page + 1 }}&author={{ author }}&date_from={{ date_from }}&date_to={{ date_to }}{% if unread_only %}&unread_only=true{% endif %}">Next →</a>
+    {% endif %}
+</div>
+{% endif %}
+
+{% else %}
+<p>No updates found. {% if author or date_from or date_to or unread_only %}<a href="/">Clear filters</a>{% else %}Run the ingestion script to populate the database.{% endif %}</p>
+{% endif %}
+{% endblock %}
+

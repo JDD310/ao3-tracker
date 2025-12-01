@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}AO3 Tracker – {{ work.title }}{% endblock %}
+
+{% block content %}
+<h1>{{ work.title }}</h1>
+
+<div>
+    <p><strong>Author:</strong> {{ work.author }}</p>
+    <p><strong>AO3 ID:</strong> {{ work.ao3_id }}</p>
+    <p><strong>Last seen chapter:</strong> {{ work.last_seen_chapter or "N/A" }}</p>
+    <p><strong>Last update at:</strong> {{ work.last_update_at or "N/A" }}</p>
+    {% if work.url %}
+    <p><strong>AO3 URL:</strong> <a href="{{ work.url }}" target="_blank">{{ work.url }}</a></p>
+    {% endif %}
+    {% if unread_count > 0 %}
+    <p>
+        <form method="post" action="/works/{{ work.id }}/mark-read" style="display: inline;">
+            <button type="submit">Mark all updates as read ({{ unread_count }} unread)</button>
+        </form>
+    </p>
+    {% endif %}
+</div>
+
+<h2>Statistics</h2>
+<div class="stats-grid">
+    <div class="stat-item">
+        <strong>Total Updates:</strong> {{ stats.total_updates }}
+    </div>
+    {% if stats.total_word_count %}
+    <div class="stat-item">
+        <strong>Total Word Count:</strong> {{ "{:,}".format(stats.total_word_count) }}
+    </div>
+    {% endif %}
+    {% if stats.average_words_per_chapter %}
+    <div class="stat-item">
+        <strong>Average Words per Chapter:</strong> {{ "{:,.0f}".format(stats.average_words_per_chapter) }}
+    </div>
+    {% endif %}
+    {% if stats.average_days_between_updates %}
+    <div class="stat-item">
+        <strong>Average Days Between Updates:</strong> {{ stats.average_days_between_updates }}
+    </div>
+    {% endif %}
+    {% if stats.next_expected_release %}
+    <div class="stat-item">
+        <strong>Next Expected Release:</strong> 
+        <span id="next-release-date">{{ stats.next_expected_release }}</span>
+    </div>
+    {% endif %}
+</div>
+
+{% if stats.word_count_data %}
+<h2>Word Count Over Time</h2>
+<div style="position: relative; height: 400px; margin: 20px 0;">
+    <canvas id="wordCountChart"></canvas>
+</div>
+{% endif %}
+
+<h2>Update History</h2>
+{% if updates %}
+<table>
+    <thead>
+        <tr>
+            <th>Status</th>
+            <th>Chapter Label</th>
+            <th>Email Subject</th>
+            <th>Email Date</th>
+            <th>Chapter Words</th>
+            <th>Total Words</th>
+            <th>Recorded</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for update in updates %}
+        <tr {% if not update.is_read %}style="font-weight: bold;"{% endif %}>
+            <td>
+                {% if not update.is_read %}
+                    <span style="color: #007bff;">●</span> Unread
+                {% else %}
+                    <span style="color: #6c757d;">○</span> Read
+                {% endif %}
+            </td>
+            <td>{{ update.chapter_label }}</td>
+            <td>{{ update.email_subject }}</td>
+            <td>{{ update.email_date }}</td>
+            <td>{% if update.chapter_word_count %}{{ "{:,}".format(update.chapter_word_count) }}{% else %}—{% endif %}</td>
+            <td>{% if update.work_word_count %}{{ "{:,}".format(update.work_word_count) }}{% else %}—{% endif %}</td>
+            <td>{{ update.created_at }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No updates found for this work.</p>
+{% endif %}
+
+{% if stats.word_count_data %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+    // Format next release date
+    const nextReleaseEl = document.getElementById('next-release-date');
+    if (nextReleaseEl) {
+        const dateStr = nextReleaseEl.textContent;
+        try {
+            const date = new Date(dateStr);
+            nextReleaseEl.textContent = date.toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+        } catch (e) {
+            // Keep original if parsing fails
+        }
+    }
+
+    // Word count chart
+    const wordCountData = {{ stats.word_count_data | tojson }};
+    const labels = wordCountData.map(item => {
+        try {
+            const date = new Date(item.date);
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        } catch (e) {
+            return item.date;
+        }
+    });
+    const wordCounts = wordCountData.map(item => item.word_count);
+
+    const ctx = document.getElementById('wordCountChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Total Word Count',
+                data: wordCounts,
+                borderColor: 'rgb(75, 192, 192)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                tension: 0.1,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: false,
+                    ticks: {
+                        callback: function(value) {
+                            return value.toLocaleString();
+                        }
+                    }
+                }
+            },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return 'Word Count: ' + context.parsed.y.toLocaleString();
+                        }
+                    }
+                }
+            }
+        }
+    });
+</script>
+{% endif %}
+{% endblock %}
+

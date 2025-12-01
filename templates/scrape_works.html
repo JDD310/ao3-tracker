@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}AO3 Tracker – Scrape Works{% endblock %}
+
+{% block content %}
+<h1>Scrape Works from URLs</h1>
+
+<p>Enter AO3 work URLs (one per line) to fetch and store metadata in the database.</p>
+
+{% if error %}
+<div style="padding: 15px; background-color: #fee; border: 1px solid #fcc; border-radius: 6px; margin-bottom: 20px; color: #c00;">
+    <strong>Error:</strong> {{ error }}
+</div>
+{% endif %}
+
+{% if success %}
+<div style="padding: 15px; background-color: #efe; border: 1px solid #cfc; border-radius: 6px; margin-bottom: 20px; color: #0c0;">
+    <strong>Success!</strong>
+    <ul>
+        <li>Processed: {{ stats.processed }} URLs</li>
+        <li>Inserted: {{ stats.inserted }} new works</li>
+        <li>Updated: {{ stats.updated }} existing works</li>
+        {% if stats.errors %}
+        <li>Errors: {{ stats.errors|length }}</li>
+        {% endif %}
+    </ul>
+    {% if stats.errors %}
+    <details style="margin-top: 10px;">
+        <summary>Error Details</summary>
+        <ul>
+            {% for error in stats.errors %}
+            <li><strong>{{ error.url }}:</strong> {{ error.error }}</li>
+            {% endfor %}
+        </ul>
+    </details>
+    {% endif %}
+</div>
+{% endif %}
+
+<form method="post" action="/works/scrape" style="margin-bottom: 20px;">
+    <div style="margin-bottom: 15px;">
+        <label for="urls" style="display: block; margin-bottom: 5px; font-weight: bold;">
+            AO3 Work URLs (one per line):
+        </label>
+        <textarea 
+            id="urls" 
+            name="urls" 
+            rows="10" 
+            cols="80" 
+            placeholder="https://archiveofourown.org/works/12345678&#10;https://archiveofourown.org/works/87654321"
+            style="width: 100%; max-width: 800px; padding: 8px; font-family: monospace;"
+            required
+        ></textarea>
+    </div>
+    
+    <div style="margin-bottom: 15px;">
+        <label>
+            <input type="checkbox" name="force_rescrape" value="true">
+            Force rescrape (update existing works even if they already exist)
+        </label>
+    </div>
+    
+    <div>
+        <button type="submit" style="padding: 10px 20px; font-size: 16px;">Scrape Works</button>
+        <a href="/works" style="margin-left: 10px;">Back to Works</a>
+    </div>
+</form>
+
+<div style="margin-top: 30px; padding: 15px; background-color: #f8f9fa; border-radius: 6px;">
+    <h3>Instructions</h3>
+    <ul>
+        <li>Enter one AO3 work URL per line</li>
+        <li>URLs can be in any format (full URL, short URL, etc.)</li>
+        <li>The system will normalize URLs and extract work IDs automatically</li>
+        <li>If a work already exists, it will be skipped unless "Force rescrape" is checked</li>
+        <li>Locked or deleted works will show an error message</li>
+    </ul>
+</div>
+{% endblock %}
+

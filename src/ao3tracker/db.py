@@ -36,6 +36,37 @@ def init_db():
     """)
     if cur.fetchone()[0] == 0:
         cur.execute("ALTER TABLE works ADD COLUMN total_word_count INTEGER")
+    
+    # Add new metadata columns for scraping integration
+    new_columns = [
+        ('fandoms', 'TEXT'),
+        ('rating', 'TEXT'),
+        ('archive_warnings', 'TEXT'),
+        ('categories', 'TEXT'),
+        ('relationships', 'TEXT'),
+        ('characters', 'TEXT'),
+        ('additional_tags', 'TEXT'),
+        ('language', 'TEXT'),
+        ('chapters_current', 'INTEGER'),
+        ('chapters_max', 'INTEGER'),
+        ('status', 'TEXT'),
+        ('published_at', 'TEXT'),
+        ('updated_at', 'TEXT'),
+        ('summary_html', 'TEXT'),
+        ('metadata_source', 'TEXT'),
+    ]
+    
+    for column_name, column_type in new_columns:
+        cur.execute("""
+            SELECT COUNT(*) FROM pragma_table_info('works') WHERE name=?
+        """, (column_name,))
+        if cur.fetchone()[0] == 0:
+            cur.execute(f"ALTER TABLE works ADD COLUMN {column_name} {column_type}")
+    
+    # Set default metadata_source for existing rows
+    cur.execute("""
+        UPDATE works SET metadata_source = 'email' WHERE metadata_source IS NULL
+    """)
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS updates (
@@ -63,6 +94,13 @@ def init_db():
     """)
     if cur.fetchone()[0] == 0:
         cur.execute("ALTER TABLE updates ADD COLUMN work_word_count INTEGER")
+    
+    # Add is_read column if it doesn't exist (for existing databases)
+    cur.execute("""
+        SELECT COUNT(*) FROM pragma_table_info('updates') WHERE name='is_read'
+    """)
+    if cur.fetchone()[0] == 0:
+        cur.execute("ALTER TABLE updates ADD COLUMN is_read INTEGER DEFAULT 0")
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS processed_messages (
@@ -207,3 +245,150 @@ def reset_processed_messages_only():
     clear_processed_messages(conn)
     conn.close()
     print("Processed messages table cleared. Works and updates remain intact.")
+
+
+def mark_updates_as_read(conn: sqlite3.Connection, work_id: int):
+    """Mark all updates for a work as read."""
+    cur = conn.cursor()
+    cur.execute("UPDATE updates SET is_read = 1 WHERE work_id = ?", (work_id,))
+    conn.commit()
+
+
+def mark_update_as_read(conn: sqlite3.Connection, update_id: int):
+    """Mark a specific update as read."""
+    cur = conn.cursor()
+    cur.execute("UPDATE updates SET is_read = 1 WHERE id = ?", (update_id,))
+    conn.commit()
+
+
+def upsert_work_with_metadata(
+    conn: sqlite3.Connection,
+    work_metadata: Dict[str, Any],
+) -> int:
+    """
+    Insert or update a work with full metadata from scraping.
+    
+    Args:
+        conn: Database connection
+        work_metadata: Dict with keys matching database columns:
+            - ao3_id (required)
+            - title, author, url
+            - fandoms, rating, archive_warnings, categories, relationships, characters, additional_tags
+            - language, chapters_current, chapters_max, status
+            - published_at, updated_at, summary_html
+            - total_word_count
+            - metadata_source ('email', 'scrape', 'mixed')
+    
+    Returns:
+        work_id: The ID of the inserted or updated work
+    """
+    cur = conn.cursor()
+    
+    ao3_id = work_metadata.get("ao3_id")
+    if not ao3_id:
+        raise ValueError("ao3_id is required")
+    
+    # Check if work exists
+    cur.execute("SELECT id, metadata_source FROM works WHERE ao3_id = ?", (ao3_id,))
+    existing = cur.fetchone()
+    
+    from datetime import datetime
+    now_str = datetime.utcnow().isoformat()
+    
+    # Determine metadata_source
+    if existing:
+        existing_source = existing["metadata_source"] or "email"
+        if existing_source == "email":
+            metadata_source = "mixed"
+        else:
+            metadata_source = existing_source
+    else:
+        metadata_source = work_metadata.get("metadata_source", "scrape")
+    
+    # Prepare values with COALESCE to preserve existing data when new data is None
+    if existing:
+        work_id = existing["id"]
+        # Update existing work, using COALESCE to preserve existing values
+        cur.execute("""
+            UPDATE works SET
+                title = COALESCE(?, title),
+                author = COALESCE(?, author),
+                url = COALESCE(?, url),
+                total_word_count = COALESCE(?, total_word_count),
+                fandoms = COALESCE(?, fandoms),
+                rating = COALESCE(?, rating),
+                archive_warnings = COALESCE(?, archive_warnings),
+                categories = COALESCE(?, categories),
+                relationships = COALESCE(?, relationships),
+                characters = COALESCE(?, characters),
+                additional_tags = COALESCE(?, additional_tags),
+                language = COALESCE(?, language),
+                chapters_current = COALESCE(?, chapters_current),
+                chapters_max = COALESCE(?, chapters_max),
+                status = COALESCE(?, status),
+                published_at = COALESCE(?, published_at),
+                updated_at = COALESCE(?, updated_at),
+                summary_html = COALESCE(?, summary_html),
+                metadata_source = ?,
+                last_update_at = ?
+            WHERE id = ?
+        """, (
+            work_metadata.get("title"),
+            work_metadata.get("author"),
+            work_metadata.get("url"),
+            work_metadata.get("total_word_count"),
+            work_metadata.get("fandoms"),
+            work_metadata.get("rating"),
+            work_metadata.get("archive_warnings"),
+            work_metadata.get("categories"),
+            work_metadata.get("relationships"),
+            work_metadata.get("characters"),
+            work_metadata.get("additional_tags"),
+            work_metadata.get("language"),
+            work_metadata.get("chapters_current"),
+            work_metadata.get("chapters_max"),
+            work_metadata.get("status"),
+            work_metadata.get("published_at"),
+            work_metadata.get("updated_at"),
+            work_metadata.get("summary_html"),
+            metadata_source,
+            now_str,
+            work_id,
+        ))
+    else:
+        # Insert new work
+        cur.execute("""
+            INSERT INTO works (
+                ao3_id, title, author, url, total_word_count,
+                fandoms, rating, archive_warnings, categories, relationships,
+                characters, additional_tags, language, chapters_current, chapters_max,
+                status, published_at, updated_at, summary_html, metadata_source,
+                last_update_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            ao3_id,
+            work_metadata.get("title"),
+            work_metadata.get("author"),
+            work_metadata.get("url"),
+            work_metadata.get("total_word_count"),
+            work_metadata.get("fandoms"),
+            work_metadata.get("rating"),
+            work_metadata.get("archive_warnings"),
+            work_metadata.get("categories"),
+            work_metadata.get("relationships"),
+            work_metadata.get("characters"),
+            work_metadata.get("additional_tags"),
+            work_metadata.get("language"),
+            work_metadata.get("chapters_current"),
+            work_metadata.get("chapters_max"),
+            work_metadata.get("status"),
+            work_metadata.get("published_at"),
+            work_metadata.get("updated_at"),
+            work_metadata.get("summary_html"),
+            metadata_source,
+            now_str,
+        ))
+        work_id = cur.lastrowid
+    
+    conn.commit()
+    return work_id

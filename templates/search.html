@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}AO3 Tracker – Search{% endblock %}
+
+{% block content %}
+<h1>Search Works</h1>
+
+<form method="get" action="/search" style="margin-bottom: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 6px;">
+    <div style="display: flex; gap: 10px; align-items: end;">
+        <div style="flex: 1;">
+            <label for="q">Search:</label>
+            <input type="text" id="q" name="q" value="{{ query }}" placeholder="Search by title or author" style="width: 100%; padding: 8px;">
+        </div>
+        <div>
+            <button type="submit">Search</button>
+        </div>
+    </div>
+</form>
+
+{% if query %}
+    {% if works %}
+    <p>Found {{ total }} result(s) for "{{ query }}" (Page {{ page }} of {{ total_pages }})</p>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Author</th>
+                <th>Last Update</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for work in works %}
+            <tr>
+                <td><a href="/works/{{ work.id }}">{{ work.title }}</a></td>
+                <td>{{ work.author }}</td>
+                <td>
+                    {% if work.last_seen_chapter %}
+                        {{ work.last_seen_chapter }}
+                    {% endif %}
+                    {% if work.last_update_at %}
+                        ({{ work.last_update_at }})
+                    {% endif %}
+                </td>
+                <td>
+                    {% if work.url %}
+                        <a href="{{ work.url }}" target="_blank">Open on AO3</a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+    <div style="margin-top: 20px; text-align: center;">
+        {% if page > 1 %}
+            <a href="?q={{ query }}&page={{ page - 1 }}">← Previous</a>
+        {% endif %}
+        
+        <span style="margin: 0 20px;">Page {{ page }} of {{ total_pages }}</span>
+        
+        {% if page < total_pages %}
+            <a href="?q={{ query }}&page={{ page + 1 }}">Next →</a>
+        {% endif %}
+    </div>
+    {% endif %}
+    
+    {% else %}
+    <p>No works found for "{{ query }}".</p>
+    {% endif %}
+{% else %}
+<p>Enter a search term to find works by title or author.</p>
+{% endif %}
+{% endblock %}
+

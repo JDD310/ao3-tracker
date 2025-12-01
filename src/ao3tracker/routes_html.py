@@ -1,0 +1,413 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Query, Request, Form
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+
+from ao3tracker.db import get_connection, mark_updates_as_read
+from ao3tracker.utils import calculate_work_statistics
+from ao3tracker.scrape_works import scrape_and_store_works
+
+# Get project root (same level as src/)
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+# Set up template directory
+TEMPLATES_DIR = BASE_DIR / "templates"
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+router = APIRouter(tags=["html"])
+
+
+@router.get("/", response_class=HTMLResponse)
+async def list_updates(
+    request: Request,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    author: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    unread_only: bool = Query(False),
+):
+    """
+    Show the most recent updates across all works with pagination and filtering.
+    """
+    conn = get_connection()
+    cur = conn.cursor()
+    
+    # Build WHERE clause
+    conditions = []
+    params = []
+    
+    if author:
+        conditions.append("w.author LIKE ?")
+        params.append(f"%{author}%")
+    
+    if date_from:
+        conditions.append("u.email_date >= ?")
+        params.append(date_from)
+    
+    if date_to:
+        conditions.append("u.email_date <= ?")
+        params.append(date_to)
+    
+    if unread_only:
+        conditions.append("(u.is_read = 0 OR u.is_read IS NULL)")
+    
+    where_clause = " AND ".join(conditions) if conditions else "1=1"
+    
+    # Get total count
+    count_query = f"""
+        SELECT COUNT(*)
+        FROM updates u
+        JOIN works w ON u.work_id = w.id
+        WHERE {where_clause}
+    """
+    total = cur.execute(count_query, params).fetchone()[0]
+    
+    # Get paginated results
+    offset = (page - 1) * page_size
+    query = f"""
+        SELECT
+            u.id AS update_id,
+            w.id AS work_id,
+            w.title,
+            w.author,
+            w.url,
+            u.chapter_label,
+            u.email_subject,
+            u.email_date,
+            u.created_at,
+            u.is_read
+        FROM updates u
+        JOIN works w ON u.work_id = w.id
+        WHERE {where_clause}
+        ORDER BY u.email_date DESC
+        LIMIT ? OFFSET ?
+    """
+    params.extend([page_size, offset])
+    rows = cur.execute(query, params).fetchall()
+    updates = [dict(row) for row in rows]
+    
+    total_pages = (total + page_size - 1) // page_size
+    
+    conn.close()
+    return templates.TemplateResponse(
+        "updates.html",
+        {
+            "request": request,
+            "updates": updates,
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": total_pages,
+            "author": author or "",
+            "date_from": date_from or "",
+            "date_to": date_to or "",
+            "unread_only": unread_only,
+        },
+    )
+
+
+@router.get("/works", response_class=HTMLResponse)
+async def list_works(
+    request: Request,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    author: Optional[str] = None,
+    filter: Optional[str] = Query(None, description="Filter: 'updated' for works with updates, 'all' for all works"),
+):
+    conn = get_connection()
+    cur = conn.cursor()
+    
+    conditions = []
+    params = []
+    
+    if author:
+        conditions.append("w.author LIKE ?")
+        params.append(f"%{author}%")
+    
+    # Add filter for updated works
+    if filter == "updated":
+        conditions.append("EXISTS (SELECT 1 FROM updates u WHERE u.work_id = w.id)")
+    
+    where_clause = " AND ".join(conditions) if conditions else "1=1"
+    
+    # Get total count
+    count_query = f"SELECT COUNT(*) FROM works w WHERE {where_clause}"
+    total = cur.execute(count_query, params).fetchone()[0]
+    
+    # Get paginated results with most recent chapter label
+    offset = (page - 1) * page_size
+    query = f"""
+        SELECT
+            w.id,
+            w.ao3_id,
+            w.title,
+            w.author,
+            w.url,
+            w.last_update_at,
+            (SELECT u.chapter_label 
+             FROM updates u 
+             WHERE u.work_id = w.id 
+             ORDER BY u.email_date DESC, u.id DESC 
+             LIMIT 1) AS last_seen_chapter
+        FROM works w
+        WHERE {where_clause}
+        ORDER BY w.title ASC
+        LIMIT ? OFFSET ?
+    """
+    params.extend([page_size, offset])
+    rows = cur.execute(query, params).fetchall()
+    works = [dict(row) for row in rows]
+    
+    total_pages = (total + page_size - 1) // page_size
+    
+    conn.close()
+    return templates.TemplateResponse(
+        "works.html",
+        {
+            "request": request,
+            "works": works,
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": total_pages,
+            "author": author or "",
+            "filter": filter or "all",
+        },
+    )
+
+
+@router.get("/works/{work_id}", response_class=HTMLResponse)
+async def work_detail(work_id: int, request: Request):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    work_row = cur.execute("""
+        SELECT
+            w.id,
+            w.ao3_id,
+            w.title,
+            w.author,
+            w.url,
+            w.last_update_at,
+            w.total_word_count,
+            (SELECT u.chapter_label 
+             FROM updates u 
+             WHERE u.work_id = w.id 
+             ORDER BY u.email_date DESC, u.id DESC 
+             LIMIT 1) AS last_seen_chapter
+        FROM works w
+        WHERE w.id = ?
+    """, (work_id,)).fetchone()
+
+    if work_row is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Work not found")
+
+    work = dict(work_row)
+
+    updates_rows = cur.execute("""
+        SELECT
+            id,
+            chapter_label,
+            email_subject,
+            email_date,
+            created_at,
+            chapter_word_count,
+            work_word_count,
+            is_read
+        FROM updates
+        WHERE work_id = ?
+        ORDER BY email_date ASC
+    """, (work_id,)).fetchall()
+
+    updates = [dict(u) for u in updates_rows]
+    
+    # Calculate statistics
+    stats = calculate_work_statistics(updates, work)
+    
+    # Count unread updates
+    unread_count = sum(1 for u in updates if not u.get("is_read", 0))
+    
+    conn.close()
+    return templates.TemplateResponse(
+        "work_detail.html",
+        {
+            "request": request,
+            "work": work,
+            "updates": updates,
+            "stats": stats,
+            "unread_count": unread_count,
+        },
+    )
+
+
+@router.post("/works/{work_id}/mark-read", response_class=HTMLResponse)
+async def mark_work_read(work_id: int, request: Request):
+    """Mark all updates for a work as read."""
+    conn = get_connection()
+    cur = conn.cursor()
+    
+    # Verify work exists
+    work_row = cur.execute("SELECT id FROM works WHERE id = ?", (work_id,)).fetchone()
+    if work_row is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Work not found")
+    
+    mark_updates_as_read(conn, work_id)
+    conn.close()
+    
+    # Redirect back to work detail page
+    return RedirectResponse(url=f"/works/{work_id}", status_code=303)
+
+
+@router.get("/search", response_class=HTMLResponse)
+async def search_works(
+    request: Request,
+    q: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+):
+    """Search works by title or author."""
+    conn = get_connection()
+    cur = conn.cursor()
+    
+    works = []
+    total = 0
+    total_pages = 0
+    
+    if q:
+        # Use LIKE for search (FTS5 can be added later)
+        query = """
+            SELECT id, ao3_id, title, author, url, last_seen_chapter, last_update_at, total_word_count
+            FROM works
+            WHERE title LIKE ? OR author LIKE ?
+            ORDER BY title ASC
+            LIMIT ? OFFSET ?
+        """
+        search_term = f"%{q}%"
+        offset = (page - 1) * page_size
+        
+        # Get total count
+        count_query = "SELECT COUNT(*) FROM works WHERE title LIKE ? OR author LIKE ?"
+        total = cur.execute(count_query, (search_term, search_term)).fetchone()[0]
+        
+        # Get paginated results
+        rows = cur.execute(query, (search_term, search_term, page_size, offset)).fetchall()
+        works = [dict(row) for row in rows]
+        
+        total_pages = (total + page_size - 1) // page_size
+    
+    conn.close()
+    return templates.TemplateResponse(
+        "search.html",
+        {
+            "request": request,
+            "works": works,
+            "query": q or "",
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": total_pages,
+        },
+    )
+
+
+@router.get("/status", response_class=HTMLResponse)
+async def status_page(request: Request):
+    """Show system status and statistics."""
+    conn = get_connection()
+    cur = conn.cursor()
+    
+    # Get counts
+    works_count = cur.execute("SELECT COUNT(*) FROM works").fetchone()[0]
+    updates_count = cur.execute("SELECT COUNT(*) FROM updates").fetchone()[0]
+    unread_count = cur.execute("SELECT COUNT(*) FROM updates WHERE is_read = 0 OR is_read IS NULL").fetchone()[0]
+    
+    # Get last update time
+    last_update_row = cur.execute("""
+        SELECT MAX(email_date) FROM updates
+    """).fetchone()
+    last_update_time = last_update_row[0] if last_update_row and last_update_row[0] else None
+    
+    # Get last ingestion time (from processed_messages or updates created_at)
+    last_ingestion_row = cur.execute("""
+        SELECT MAX(created_at) FROM updates
+    """).fetchone()
+    last_ingestion_time = last_ingestion_row[0] if last_ingestion_row and last_ingestion_row[0] else None
+    
+    conn.close()
+    
+    return templates.TemplateResponse(
+        "status.html",
+        {
+            "request": request,
+            "works_count": works_count,
+            "updates_count": updates_count,
+            "unread_count": unread_count,
+            "last_update_time": last_update_time,
+            "last_ingestion_time": last_ingestion_time,
+        },
+    )
+
+
+@router.get("/health", response_class=PlainTextResponse)
+async def health():
+    """Health check endpoint."""
+    return "OK"
+
+
+@router.get("/works/scrape", response_class=HTMLResponse)
+async def scrape_works_form(request: Request):
+    """Show form for submitting AO3 work URLs to scrape."""
+    return templates.TemplateResponse(
+        "scrape_works.html",
+        {
+            "request": request,
+        },
+    )
+
+
+@router.post("/works/scrape", response_class=HTMLResponse)
+async def scrape_works_submit(
+    request: Request,
+    urls: str = Form(...),
+    force_rescrape: bool = Form(False),
+):
+    """Process URL submission and scrape metadata."""
+    # Parse URLs (one per line)
+    url_list = [url.strip() for url in urls.split("\n") if url.strip()]
+    
+    if not url_list:
+        return templates.TemplateResponse(
+            "scrape_works.html",
+            {
+                "request": request,
+                "error": "No URLs provided",
+            },
+        )
+    
+    try:
+        stats = scrape_and_store_works(url_list, force_rescrape=force_rescrape)
+        
+        return templates.TemplateResponse(
+            "scrape_works.html",
+            {
+                "request": request,
+                "success": True,
+                "stats": stats,
+            },
+        )
+    except Exception as e:
+        return templates.TemplateResponse(
+            "scrape_works.html",
+            {
+                "request": request,
+                "error": f"Error during scraping: {str(e)}",
+            },
+        )
+
